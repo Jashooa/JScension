@@ -41,7 +41,7 @@ function A:OnEnable()
 	self:RegisterEvent("ADDON_ACTION_FORBIDDEN", "OnActionBlocked")
 	self:RegisterEvent("SPELLS_CHANGED", "OnSpellsChanged")
 
-	ns.Button.Create(self.db.profile.button)
+	ns.RotationButton.Create(self.db.profile.button)
 	ns.Config.Setup()
 
 	if self.db.profile.auto then

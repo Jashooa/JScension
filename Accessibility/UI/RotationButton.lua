@@ -7,7 +7,7 @@
 
 local _, ns = ...
 
-local Button = {}
+local RotationButton = {}
 
 local Profile = ns.Profile
 local Rotation = ns.Rotation
@@ -36,7 +36,7 @@ end
 -- Refresh updates the icon and the ready border. The icon shows the spell a
 -- click would actually cast: Rotation.NextRule returns the first rule that
 -- passes every gate, so an earlier blocked rule does not pin a stale icon.
-function Button.Refresh()
+function RotationButton.Refresh()
 	if not frame then return end
 	local rule = Rotation.NextRule()
 	local icon = QUESTION_MARK
@@ -56,7 +56,7 @@ end
 -- RefreshAuto repaints the auto toggle: green when auto is on, red when off.
 -- It reads the live profile so the colour follows every auto change (button
 -- click, slash command, or the options panel), not just the last click here.
-function Button.RefreshAuto()
+function RotationButton.RefreshAuto()
 	if not autoButton then return end
 	if Profile.current().auto then
 		autoButton:SetBackdropColor(0.1, 0.8, 0.1, 1)   -- green: on
@@ -67,7 +67,7 @@ end
 
 -- SetVisible shows or hides the button frame. Hiding keeps the saved position
 -- intact; re-showing restores it at the same spot.
-function Button.SetVisible(visible)
+function RotationButton.SetVisible(visible)
 	if not frame then return end
 	if visible then
 		frame:Show()
@@ -77,18 +77,18 @@ function Button.SetVisible(visible)
 end
 
 -- ApplyPosition places the button from the saved settings.
-function Button.ApplyPosition(saved)
+function RotationButton.ApplyPosition(saved)
 	if not frame then return end
 	local b = saved or Profile.current().button
 	frame:ClearAllPoints()
 	frame:SetPoint(b.point or "CENTER", UIParent, b.relativePoint or "CENTER", b.x or 0, b.y or 0)
 	frame:SetScale(b.scale or 1.0)
-	Button.SetVisible(b.enabled ~= false)
-	Button.Refresh()
+	RotationButton.SetVisible(b.enabled ~= false)
+	RotationButton.Refresh()
 end
 
 -- Create builds the button. Core calls it once.
-function Button.Create(saved)
+function RotationButton.Create(saved)
 	if frame then return end
 
 	frame = CreateFrame("Button", "AccessibilityButton", UIParent)
@@ -153,12 +153,12 @@ function Button.Create(saved)
 		sinceRefresh = sinceRefresh + dt
 		if sinceRefresh < REFRESH_INTERVAL then return end
 		sinceRefresh = 0
-		Button.Refresh()
-		Button.RefreshAuto()
+		RotationButton.Refresh()
+		RotationButton.RefreshAuto()
 	end)
 
-	Button.ApplyPosition(saved)
-	Button.RefreshAuto()
+	RotationButton.ApplyPosition(saved)
+	RotationButton.RefreshAuto()
 end
 
-ns.Button = Button
+ns.RotationButton = RotationButton

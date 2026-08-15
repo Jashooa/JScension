@@ -21,8 +21,8 @@ Core\SpellPicker.lua
 Core\Conditions.lua
 Core\Rotation.lua
 
-UI\Button.lua
-UI\Widgets\TitleButtonGroup.lua
+UI\RotationButton.lua
+UI\RotationPanel.lua
 UI\Config.lua
 
 Accessibility.lua

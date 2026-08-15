@@ -331,6 +331,16 @@ function Profile.deleteRule(rotation, index)
 	table.remove(rotation.rules, index)
 end
 
+-- addCondition appends a default condition to a rule.
+function Profile.addCondition(rule)
+	rule.conditions[#rule.conditions + 1] = { type = "target_type", value = "enemy" }
+end
+
+-- deleteCondition removes a condition from a rule.
+function Profile.deleteCondition(rule, index)
+	table.remove(rule.conditions, index)
+end
+
 -- moveRule reorders a rule within its rotation.
 function Profile.moveRule(rotation, from, to)
 	local rules = rotation.rules

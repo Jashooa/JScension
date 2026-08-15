@@ -202,10 +202,7 @@ loadModule(ROOT .. "Core/Conditions.lua", ns)
 loadModule(ROOT .. "Core/Rotation.lua", ns)
 
 ns.addon = { db = { profile = {} } }   -- Accessibility.lua (the entry) is not loaded; provide the db stub
-ns.Button = { ApplyPosition = function() end }   -- Config's button settings call it
-ns.UI = ns.UI or {}
-ns.UI.Widgets = ns.UI.Widgets or {}
-ns.UI.Widgets.TitleButtonGroups = {}   -- widget would set this; stubbed here
+ns.RotationButton = { ApplyPosition = function() end }   -- Config's button settings call it
 _G.__dialogStatus = {}   -- the AceConfigDialog:GetStatusTable stub returns this
 
 loadModule(ROOT .. "UI/Config.lua", ns)
@@ -707,22 +704,24 @@ do
 	ok("active rotation marked", rotGroup.args.rotation1.name() == "Single (Active)")
 	ok("inactive rotation plain", rotGroup.args.rotation2.name() == "AoE")
 	ok("rotation has no icon", rotGroup.args.rotation1.icon == nil)
-	-- rotation content is sectioned: settings up top, rules below
+
+	-- rotation content: a settings section, then the RotationPanel widget
+	-- that renders the rule cards (the declarative rule/condition groups are
+	-- gone; the panel is one execute leaf carrying the rotation reference)
 	ok("rotation has settings section", rotGroup.args.rotation1.args.settings ~= nil)
-	ok("rotation has rules section", rotGroup.args.rotation1.args.rules ~= nil)
 	ok("settings section inline", rotGroup.args.rotation1.args.settings.inline == true)
-	ok("rules section inline", rotGroup.args.rotation1.args.rules.inline == true)
-	-- "Add rule" is a title-bar button only (no in-body button)
-	ok("no in-body addRule", rotGroup.args.rotation1.args.rules.args.addRule == nil)
-	ok("rule card under rules", rotGroup.args.rotation1.args.rules.args.rule1 ~= nil)
-	-- the Rules group registers a title-button spec for the hook
-	local rulesKey = rotGroup.args.rotation1.args.rules.name
-	ok("Rules title-button registered", ns.UI.Widgets.TitleButtonGroups[rulesKey] ~= nil
-		and ns.UI.Widgets.TitleButtonGroups[rulesKey][1].label == "Add rule")
-	ok("rules key is unique per rotation", rulesKey:find("\0", 1, true) ~= nil)
-	ok("rule is inline", rotGroup.args.rotation1.args.rules.args.rule1.inline == true)
-	ok("rule title has icon escape", rotGroup.args.rotation1.args.rules.args.rule1.name():find("|T") == 1)
-	ok("rule title has label", rotGroup.args.rotation1.args.rules.args.rule1.name():find("Fireball") ~= nil)
+	local panelOption = rotGroup.args.rotation1.args.rotationPanel
+	ok("rotation panel option present", panelOption ~= nil)
+	ok("panel is the custom widget", panelOption.control == "RotationPanel")
+	ok("panel is an execute leaf", panelOption.type == "execute")
+	ok("panel carries its rotation", panelOption.rotation == prof().rotations[1])
+	ok("no declarative rules group", rotGroup.args.rotation1.args.rules == nil)
+	ok("no rule cards in the tree", rotGroup.args.rotation1.args.rule1 == nil)
+
+	-- each rotation gets its own panel bound to its own rotation
+	local panelTwo = rotGroup.args.rotation2.args.rotationPanel
+	ok("rotation2 panel carries rotation2", panelTwo ~= nil and panelTwo.rotation == prof().rotations[2])
+
 	-- general options live on the Rotations page, above its sub-tree
 	ok("no root general options", opts.args.auto == nil and opts.args.general == nil)
 	ok("active rotation dropdown", rotGroup.args.activeRotation ~= nil)
@@ -759,114 +758,29 @@ do
 	rotGroup.args.rotation2.args.settings.args.delete.func()
 	eq("delete via tree", #prof().rotations, 2)
 	rotGroup = Config.BuildOptions().args.rotations
-	local rule1 = rotGroup.args.rotation1.args.rules.args.rule1
-	-- main options are always visible (no hidden details group)
-	ok("rule has enabled", rule1.args.enabled ~= nil)
-	ok("rule has spell", rule1.args.spell ~= nil)
-	ok("rule has conditions section", rule1.args.conditions ~= nil)
-	ok("rule title has up/down/delete buttons",
-		ns.UI.Widgets.TitleButtonGroups[rule1.name()] ~= nil and #ns.UI.Widgets.TitleButtonGroups[rule1.name()] == 3)
-	ok("no old toolbar", rule1.args.toolbar == nil)
-	-- single rule: both up and down are disabled (first and last at once).
-	-- Reset the profile so the rule titles cannot collide across rotations
-	-- (a duplicate rotation carries the same spell, and the widget's
-	-- title-key registry is last-writer-wins).
-	prof().rotations = { { name = "Single", rules = { { name = "", spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} } } } }
-	prof().active = "Single"
-	rotGroup = Config.BuildOptions().args.rotations
-	rule1 = rotGroup.args.rotation1.args.rules.args.rule1
-	local ruleSpec = ns.UI.Widgets.TitleButtonGroups[rule1.name()]
-	ok("up disabled on first rule", ruleSpec[1].disabled and ruleSpec[1].disabled() == true)
-	ok("down disabled on last rule", ruleSpec[2].disabled and ruleSpec[2].disabled() == true)
-	ok("delete never disabled", ruleSpec[3].disabled == nil)
-
-	-- two rules: first has up disabled, down enabled; second the reverse
-	prof().rotations[1].rules[2] = {
-		name = "", spell = "Renew", spellID = nil, enabled = true, unit = "target", conditions = {},
-	}
-	rotGroup = Config.BuildOptions().args.rotations
-	local ruleA = rotGroup.args.rotation1.args.rules.args.rule1
-	local ruleB = rotGroup.args.rotation1.args.rules.args.rule2
-	local specA = ns.UI.Widgets.TitleButtonGroups[ruleA.name()]
-	local specB = ns.UI.Widgets.TitleButtonGroups[ruleB.name()]
-	ok("first rule up disabled", specA[1].disabled() == true)
-	ok("first rule down enabled", specA[2].disabled() == false)
-	ok("second rule up enabled", specB[1].disabled() == false)
-	ok("second rule down disabled", specB[2].disabled() == true)
-
-	-- two rules with the same spell must get distinct keys (the index suffix
-	-- disambiguates; the visible title stays identical)
-	prof().rotations[1].rules[2].spell = "Fireball"
-	rotGroup = Config.BuildOptions().args.rotations
-	local sameA = rotGroup.args.rotation1.args.rules.args.rule1
-	local sameB = rotGroup.args.rotation1.args.rules.args.rule2
-	local visibleOf = function(key) return key:gsub("%z.*", "") end
-	ok("same-spell titles equal", visibleOf(sameA.name()) == visibleOf(sameB.name()))
-	ok("same-spell keys distinct", sameA.name() ~= sameB.name())
-	ok("same-spell specs distinct",
-		ns.UI.Widgets.TitleButtonGroups[sameA.name()] ~= ns.UI.Widgets.TitleButtonGroups[sameB.name()])
-
-	-- each rule's "Add condition" button must add to its own rule, not the
-	-- last one (the section title keys used to collide on "Conditions")
-	prof().rotations[1].rules[1].conditions = {}
-	prof().rotations[1].rules[2].conditions = {}
-	rotGroup = Config.BuildOptions().args.rotations
-	local addCondRule1 = rotGroup.args.rotation1.args.rules.args.rule1.args.conditions
-	local addCondRule2 = rotGroup.args.rotation1.args.rules.args.rule2.args.conditions
-	local addSpec1 = ns.UI.Widgets.TitleButtonGroups[addCondRule1.name]
-	local addSpec2 = ns.UI.Widgets.TitleButtonGroups[addCondRule2.name]
-	ok("rule1 add-condition button present", addSpec1 ~= nil and addSpec1[1].label == "Add condition")
-	ok("rule2 add-condition button present", addSpec2 ~= nil and addSpec2[1].label == "Add condition")
-	ok("condition sections keyed separately", addCondRule1.name ~= addCondRule2.name)
-	addSpec1[1].func()
-	eq("rule1 add-condition adds to rule1", #prof().rotations[1].rules[1].conditions, 1)
-	eq("rule2 untouched", #prof().rotations[1].rules[2].conditions, 0)
-
-	-- the custom-Lua condition's code field must be a multi-line edit box
-	prof().rotations[1].rules[1].conditions = { { type = "lua", code = "return true" } }
-	rotGroup = Config.BuildOptions().args.rotations
-	local luaCond = rotGroup.args.rotation1.args.rules.args.rule1.args.conditions.args.condition1
-	ok("lua condition code field multiline", luaCond.args.settings.args.code ~= nil and luaCond.args.settings.args.code.multiline == true)
-	ok("lua condition code field is input type", luaCond.args.settings.args.code.type == "input")
-	ok("condition settings hidden by default", luaCond.args.settings.hidden() == true)
-	ok("condition card title visible", luaCond.hidden == nil)
-	-- the +/- toggle is in-body (title buttons on condition cards freeze the
-	-- client), so the card registers no TitleButtonGroup spec
-	ok("in-body toggle present", luaCond.args.toggle ~= nil and luaCond.args.toggle.type == "execute")
-	ok("toggle label is a function", type(luaCond.args.toggle.name) == "function")
-	ok("no condition title spec", ns.UI.Widgets.TitleButtonGroups[luaCond.name()] == nil)
+	ok("panel rebuilt with fresh rotation", rotGroup.args.rotation1.args.rotationPanel.rotation == prof().rotations[1])
 end
 
 -- ---------------------------------------------------------------------------
--- TitleButtonGroup widget tests
+-- condition CRUD tests
 -- ---------------------------------------------------------------------------
 
 do
-	-- the widget's display-title strip must remove the NUL index suffix (the
-	-- registry keeps the full string; only the rendered title is cut). The
-	-- widget early-returns without AceGUI in the harness, so the exported
-	-- StripDisplayTitle is tested directly; the SetTitle hook calls it.
-	local strip = ns.UI.Widgets.StripDisplayTitle
-	ok("strip exported by harness stub", strip == nil or type(strip) == "function")
-	-- load the widget with a fake AceGUI to get the real StripDisplayTitle
-	local widgetEnv = setmetatable({}, { __index = _G })
-	widgetEnv.LibStub = function(name)
-		if name == "AceGUI-3.0" then
-			return { Create = function() return { frame = {} } end }
-		end
-		return nil
-	end
-	local loadChunk = assert(loadfile(ROOT .. "UI/Widgets/TitleButtonGroup.lua"))
-	setfenv(loadChunk, widgetEnv)
-	loadChunk("Accessibility", ns)
-	local realStrip = ns.UI.Widgets.StripDisplayTitle
-	local nulKey = "Fireball" .. string.char(0) .. "1:2:3"
-	ok("strip removes NUL suffix", realStrip(nulKey) == "Fireball")
-	ok("strip keeps plain title", realStrip("Plain") == "Plain")
-	ok("strip keeps icon escape", realStrip("|Ticon:16:16|t Fireball" .. string.char(0) .. "1:2:3") == "|Ticon:16:16|t Fireball")
+	local rotation = { name = "R", rules = { { name = "", spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} } } }
+	Profile.addCondition(rotation.rules[1])
+	eq("addCondition appends default", #rotation.rules[1].conditions, 1)
+	eq("addCondition default type", rotation.rules[1].conditions[1].type, "target_type")
+	eq("addCondition default value", rotation.rules[1].conditions[1].value, "enemy")
+
+	Profile.addCondition(rotation.rules[1])
+	eq("addCondition appends second", #rotation.rules[1].conditions, 2)
+	Profile.deleteCondition(rotation.rules[1], 1)
+	eq("deleteCondition removes first", #rotation.rules[1].conditions, 1)
+	eq("deleteCondition keeps second", rotation.rules[1].conditions[1].type, "target_type")
+	Profile.deleteCondition(rotation.rules[1], 1)
+	eq("deleteCondition empties", #rotation.rules[1].conditions, 0)
 end
 
--- ---------------------------------------------------------------------------
 -- Log tests
 -- ---------------------------------------------------------------------------
 
