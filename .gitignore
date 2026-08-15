@@ -1,0 +1,8 @@
+# Build output: the Compatibility shim + injector binaries.
+# Rebuilt by Compatibility/build.sh, deployed by Compatibility/deploy.sh.
+bin/
+
+# Editor/OS noise.
+*.swp
+*.swo
+.DS_Store

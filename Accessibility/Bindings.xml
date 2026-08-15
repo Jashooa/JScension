@@ -1,0 +1,8 @@
+<Bindings>
+	<Binding name="ACCESSIBILITY_CAST" header="ACCESSIBILITY" runOnUp="false">
+		Accessibility_CastOnce()
+	</Binding>
+	<Binding name="ACCESSIBILITY_AUTO" runOnUp="false">
+		Accessibility_ToggleAuto()
+	</Binding>
+</Bindings>

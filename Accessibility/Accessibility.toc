@@ -1,0 +1,30 @@
+## Interface: 30300
+## Title: Accessibility
+## Notes: Accessibility for the Ascension 3.3.5a client.
+## Version: 0.1.0
+## SavedVariables: AccessibilityDB
+
+Libs\Libs.xml
+
+Utils\Constants.lua
+Utils\Compare.lua
+Utils\Coerce.lua
+Utils\Log.lua
+
+Game\Unit.lua
+Game\Aura.lua
+Game\Cast.lua
+
+Core\Compatibility.lua
+Core\Profile.lua
+Core\SpellPicker.lua
+Core\Conditions.lua
+Core\Rotation.lua
+
+UI\Button.lua
+UI\Widgets\TitleButtonGroup.lua
+UI\Config.lua
+
+Accessibility.lua
+
+Bindings.xml
