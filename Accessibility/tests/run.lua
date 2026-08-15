@@ -94,13 +94,18 @@ fake.IsUsableSpell = function(s) local x = state.spells[s]; if x then return x.u
 fake.GetSpellCooldown = function(s) local x = state.spells[s]; if x then return x.cdStart, x.cdDuration end; return 0, 0 end
 fake.IsSpellInRange = function(s) local x = state.spells[s]; if x then return x.inRange end end
 fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
--- GetSpellInfo returns (name, rank, icon, castTimeMs). The spell table may
--- set castMs to simulate a cast-time spell; 0/nil means instant.
+-- GetSpellInfo returns (name, rank, icon, castTimeMs, minRange, maxRange,
+-- spellID). The spell table may set castMs to simulate a cast-time spell;
+-- 0/nil means instant. A name maps to a stable pseudo-ID so SpellID works.
 fake.GetSpellInfo = function(id)
 	local x = type(id) == "string" and state.spells[id] or nil
 	local castMs = x and x.castMs or 0
-	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", castMs end
-	return "spell", "", "Interface\\Icons\\TEMP", castMs
+	local spellId = x and x.testId or 0
+	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", castMs, 0, 0, 8921 end
+	if type(id) == "string" then
+		return id, "", "Interface\\Icons\\TEMP", castMs, 0, 0, spellId
+	end
+	return "spell", "", "Interface\\Icons\\TEMP", castMs, 0, 0, id
 end
 fake.GetNumSpellTabs = function() return state.knownSpells[1] and 1 or 0 end
 fake.GetSpellTabInfo = function() return "General", "", 0, #state.knownSpells end
@@ -292,6 +297,14 @@ do
 	ok("castable spell listed 2", SpellPicker.IsKnown("Heroic Strike"))
 	ok("passive spell filtered", not SpellPicker.IsKnown("Blood Frenzy"))
 	ok("unknown spell not listed", not SpellPicker.IsKnown("Nope"))
+
+	-- SpellID resolution: stored ID wins; a name resolves via GetSpellInfo;
+	-- no usable spell returns nil
+	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, testId = 133 })
+	eq("SpellID from name", SpellPicker.SpellID({ spell = "Fireball" }), 133)
+	eq("SpellID stored ID wins", SpellPicker.SpellID({ spell = "Fireball", spellID = 999 }), 999)
+	eq("SpellID nil without spell", SpellPicker.SpellID({}), nil)
+	eq("SpellID nil with empty name", SpellPicker.SpellID({ spell = "" }), nil)
 
 	-- clean up so rotation tests rebuild the spellbook fresh
 	state.knownSpells = {}

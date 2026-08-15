@@ -77,4 +77,15 @@ function SpellPicker.Icon(rule)
 	return nil
 end
 
+-- SpellID resolves a rule to a numeric spell ID, or nil when the rule has no
+-- usable spell. A stored ID wins; a name is resolved through GetSpellInfo,
+-- whose 7th return is the ID in this client. Used for tooltips.
+function SpellPicker.SpellID(rule)
+	if rule.spellID and rule.spellID > 0 then return rule.spellID end
+	if rule.spell and rule.spell ~= "" then
+		return select(7, GetSpellInfo(rule.spell))
+	end
+	return nil
+end
+
 ns.SpellPicker = SpellPicker

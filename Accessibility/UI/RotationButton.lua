@@ -39,6 +39,7 @@ end
 function RotationButton.Refresh()
 	if not frame then return end
 	local rule = Rotation.NextRule()
+	frame.currentRule = rule
 	local icon = QUESTION_MARK
 	local ready = false
 	if rule then
@@ -109,6 +110,19 @@ function RotationButton.Create(saved)
 	frame.icon = frame:CreateTexture(nil, "ARTWORK")
 	frame.icon:SetAllPoints(frame)
 	frame.icon:SetTexture(QUESTION_MARK)
+
+	-- hovering the button shows the tooltip for the spell it would cast
+	frame:SetScript("OnEnter", function(self)
+		local rule = self.currentRule
+		local spellId = rule and SpellPicker.SpellID(rule)
+		if not spellId then return end
+		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetHyperlink(("spell:%d"):format(spellId))
+		GameTooltip:Show()
+	end)
+	frame:SetScript("OnLeave", function()
+		GameTooltip:Hide()
+	end)
 
 	-- auto toggle: a small "A" button pinned to the cast button's top-right
 	autoButton = CreateFrame("Button", nil, frame)
