@@ -200,11 +200,13 @@ local function conditionCard(panel, rule, condIndex, container)
 	container:AddChild(card)
 
 	-- settings controls: type dropdown, per-type fields. Only built when
-	-- expanded; a collapsed card shows just the summary and title buttons.
-	-- They are added straight to the card (no nested InlineGroup), so no
-	-- extra border box appears inside the card.
+	-- expanded; a collapsed card shows just the summary and title buttons
+	-- (border hidden so no empty box renders below the title row).
 	if conditionExpanded[condition] then
+		card:SetBorderVisible(true)
 		buildConditionSettings(panel, rule, condIndex, card)
+	else
+		card:SetBorderVisible(false)
 	end
 	return card
 end

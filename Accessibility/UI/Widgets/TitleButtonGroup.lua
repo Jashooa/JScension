@@ -76,9 +76,23 @@ local methods = {
 		end
 	end,
 
+	-- SetBorderVisible hides or shows the surrounding box. A collapsed card
+	-- (no content) shows only the title row when the border is hidden.
+	["SetBorderVisible"] = function(self, visible)
+		self.borderVisible = visible
+		if visible then
+			self.border:Show()
+		else
+			self.border:Hide()
+		end
+	end,
+
 	["LayoutFinished"] = function(self, width, height)
 		if self.noAutoHeight then return end
-		self:SetHeight((height or 0) + 40)
+		-- a borderless (collapsed) card is just the title row; a boxed one
+		-- adds the border padding
+		local baseHeight = self.borderVisible == false and 18 or 40
+		self:SetHeight((height or 0) + baseHeight)
 	end,
 
 	["OnWidthSet"] = function(self, width)
@@ -134,6 +148,8 @@ local function Constructor()
 		frame = frame,
 		content = content,
 		titletext = titletext,
+		border = border,
+		borderVisible = true,
 		type = Type,
 	}
 	for method, func in pairs(methods) do
