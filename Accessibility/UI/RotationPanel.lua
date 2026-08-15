@@ -356,11 +356,18 @@ local methods = {
 		self:SetHeight((height or 0) + 40)
 	end,
 
-	-- NotifyPanelChanged is called by every mutation closure: it rebuilds the
-	-- whole panel from the live profile, mirroring AceConfig's rebuild-on-
-	-- NotifyChange behavior for the declarative groups this widget replaces.
+	-- NotifyPanelChanged is called by every mutation closure. It must NOT
+	-- rebuild in place: the closure runs inside a widget callback, and
+	-- releasing children there would pool the very button being clicked.
+	-- AceConfig defers its whole-dialog refresh to the next frame, which
+	-- releases and re-creates this panel safely (OnShow re-renders).
 	["NotifyPanelChanged"] = function(self)
-		self:RenderPanel()
+		local config = ns.Config
+		if config then
+			config.NotifyOptionsChanged()
+		else
+			self:RenderPanel()
+		end
 	end,
 
 	["RenderPanel"] = function(self)
