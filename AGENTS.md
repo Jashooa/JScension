@@ -39,14 +39,16 @@ Two components live here:
 - Test account is throwaway (`weirded.rsbot@gmail.com`); risky in-game tests
   happen only on it, and only after telling the user.
 
-## Layout — folders by role, TOC in load order
+## Layout — folders by role
 
-The addon's Lua files are grouped by role: `Utils/` helpers, `Game/` live
-game-state readers, `Core/` engine + configuration, `UI/` frames. The TOC
-loads them in that order (entry file last) so each file's dependencies are
-already loaded. There is no dependency rule between the folders — a file
-uses whatever it needs (`Core/Config.lua` calls `ns.RotationButton`, so Core
-reaches into UI).
+The addon's Lua files are grouped by role:
+
+- `Utils/` — helpers (constants, logging, coercion, the spellbook cache,
+  the tooltip helper).
+- `Game/` — live game-state readers (units, auras, casts).
+- `Core/` — the engine and configuration (rotation, profile, conditions,
+  the compatibility seam, the option tree).
+- `UI/` — frames (the cast button, the rule editor, one reusable widget).
 
 The grouping exists for three reasons:
 
@@ -81,8 +83,7 @@ explicitly excluded from the test harness, because layout and mouse behaviour
 are client behaviour no fake can verify.
 
 `Compatibility/` (the injected DLL + injector, built with mingw) is the one
-non-Lua component. It is a native peer of `Core/Compatibility.lua`, not part
-of the addon's Lua load order.
+non-Lua component. It is a native peer of `Core/Compatibility.lua`.
 
 
 ## Two non-obvious rules the code comments will not save you from
