@@ -1,18 +1,19 @@
 -- The rotation panel widget.
 --
 -- A custom AceGUI container ("RotationPanel") that renders one rotation's
--- rules as a card list: each rule card carries the spell icon and ▲/▼/Delete
--- buttons in its title, the main options in its body, and a Conditions
--- section with per-condition cards. The panel replaces the declarative
--- AceConfig rule/condition groups: it builds real AceGUI widgets directly,
--- so every button closure binds to its own rule or condition with no
--- title-key registry and no hidden bytes in titles.
+-- rules as cards. The layout mirrors the old declarative AceConfig editor:
+-- every section uses the Flow layout with the same widths (half/full) as the
+-- options it replaces, so the panel looks identical to the previous UI.
+--
+-- Each rule card carries the spell icon and ▲/▼/Delete buttons in its title,
+-- the main options in its body, and a Conditions section with per-condition
+-- cards. Every button closure binds to its own rule or condition directly;
+-- there is no title-key registry and no hidden bytes in titles.
 --
 -- AceConfig renders the panel through a leaf option with
--- `type = "execute", control = "RotationPanel"`; the option table carries a
--- `rotation` reference (a custom field AceConfig ignores). AceConfig calls
--- InjectInfo (which stores the option table in the widget's userdata) before
--- AddChild shows the widget, so the panel renders on its first OnShow.
+-- `type = "execute", control = "RotationPanel"`. InjectInfo stores the option
+-- path in the widget's userdata before AddChild shows the widget, so the
+-- panel resolves its rotation from that path and renders on first OnShow.
 
 local _, ns = ...
 
@@ -30,8 +31,8 @@ if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 -- shared render helpers
 -- ---------------------------------------------------------------------------
 
--- Icon returns the texture path for a rule, with a fallback icon.
-local function icon(rule)
+-- RuleIcon returns the texture path for a rule, with a fallback icon.
+local function ruleIcon(rule)
 	return SpellPicker.Icon(rule) or "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 
@@ -45,7 +46,21 @@ local function ruleTitle(rule, index)
 	else
 		label = "Rule " .. index
 	end
-	return ("|T%s:16:16|t %s"):format(icon(rule), label)
+	return ("|T%s:16:16|t %s"):format(ruleIcon(rule), label)
+end
+
+-- SpellValues returns the { name = name } map for the spell dropdown. The
+-- rule's current spell is added so a stale value still renders.
+local function spellValues(rule)
+	local list = SpellPicker.List()
+	local values = {}
+	for i = 1, #list do
+		values[list[i]] = list[i]
+	end
+	if rule.spell and rule.spell ~= "" then
+		values[rule.spell] = rule.spell
+	end
+	return values
 end
 
 -- ---------------------------------------------------------------------------
@@ -56,68 +71,6 @@ end
 -- by the condition table so it survives panel rebuilds.
 local conditionExpanded = {}
 
--- conditionCard builds one condition card: a summary title, an in-body +/−
--- toggle, and a nested settings group shown only when expanded.
-local function conditionCard(panel, rule, condIndex, container)
-	local condition = rule.conditions[condIndex]
-	local def = Conditions.Registry[condition.type]
-
-	local card = AceGUI:Create("InlineGroup")
-	card:SetTitle(Conditions.Describe(condition))
-	card:SetFullWidth(true)
-	container:AddChild(card)
-
-	-- in-body toggle that expands/collapses the settings
-	local toggle = AceGUI:Create("Button")
-	toggle:SetText(conditionExpanded[condition] and "−" or "+")
-	toggle:SetCallback("OnClick", function()
-		conditionExpanded[condition] = not conditionExpanded[condition]
-		panel:NotifyPanelChanged()
-	end)
-	card:AddChild(toggle)
-
-	-- settings group: type dropdown, per-type fields, delete. Only built when
-	-- expanded; a collapsed card shows just the summary and the +/− toggle.
-	if conditionExpanded[condition] then
-		local settings = AceGUI:Create("InlineGroup")
-		settings:SetTitle("")
-		card:AddChild(settings)
-		buildConditionSettings(panel, rule, condIndex, settings)
-	end
-	return card
-end
-
--- buildConditionSettings fills the settings group with the type dropdown,
--- one control per registry-declared field, and a delete button.
-local function buildConditionSettings(panel, rule, condIndex, settings)
-	local condition = rule.conditions[condIndex]
-	local def = Conditions.Registry[condition.type]
-
-	local typeDropdown = AceGUI:Create("Dropdown")
-	typeDropdown:SetLabel("Condition")
-	typeDropdown:SetList(conditionTypeValues())
-	typeDropdown:SetValue(condition.type)
-	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
-		condition.type = value
-		panel:NotifyPanelChanged()
-	end)
-	settings:AddChild(typeDropdown)
-
-	if def then
-		for field, fieldType in pairs(def.fields) do
-			settings:AddChild(conditionField(condition, field, fieldType))
-		end
-	end
-
-	local delete = AceGUI:Create("Button")
-	delete:SetText("Delete condition")
-	delete:SetCallback("OnClick", function()
-		Profile.deleteCondition(rule, condIndex)
-		conditionExpanded[condition] = nil
-		panel:NotifyPanelChanged()
-	end)
-	settings:AddChild(delete)
-end
 
 -- conditionTypeValues returns the { key = label } map for the type dropdown.
 local function conditionTypeValues()
@@ -127,6 +80,22 @@ local function conditionTypeValues()
 		values[list[i].key] = list[i].label
 	end
 	return values
+end
+
+
+
+
+
+-- dropdownField builds a dropdown bound to one condition field.
+local function dropdownField(condition, field, name, values, initial)
+	local dropdown = AceGUI:Create("Dropdown")
+	dropdown:SetLabel(name)
+	dropdown:SetList(values)
+	dropdown:SetValue(initial)
+	dropdown:SetCallback("OnValueChanged", function(_, _, value)
+		condition[field] = value
+	end)
+	return dropdown
 end
 
 -- conditionField renders one registry-declared field as the right AceGUI
@@ -161,6 +130,7 @@ local function conditionField(condition, field, fieldType)
 	elseif fieldType == "code" then
 		local edit = AceGUI:Create("MultiLineEditBox")
 		edit:SetLabel(name)
+		edit:SetFullWidth(true)
 		edit:SetText(condition[field] or "")
 		edit:SetCallback("OnTextChanged", function(_, _, value)
 			condition[field] = value
@@ -178,38 +148,89 @@ local function conditionField(condition, field, fieldType)
 	end
 end
 
--- dropdownField builds a dropdown bound to one condition field.
-local function dropdownField(condition, field, name, values, initial)
-	local dropdown = AceGUI:Create("Dropdown")
-	dropdown:SetLabel(name)
-	dropdown:SetList(values)
-	dropdown:SetValue(initial)
-	dropdown:SetCallback("OnValueChanged", function(_, _, value)
-		condition[field] = value
+-- buildConditionSettings fills the settings group with the type dropdown,
+-- one control per registry-declared field, and a delete button. Widths match
+-- the old editor: the type and delete are full width, fields keep their
+-- default single width.
+local function buildConditionSettings(panel, rule, condIndex, settings)
+	local condition = rule.conditions[condIndex]
+	local def = Conditions.Registry[condition.type]
+
+	local typeDropdown = AceGUI:Create("Dropdown")
+	typeDropdown:SetLabel("Condition")
+	typeDropdown:SetFullWidth(true)
+	typeDropdown:SetList(conditionTypeValues())
+	typeDropdown:SetValue(condition.type)
+	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
+		condition.type = value
+		panel:NotifyPanelChanged()
 	end)
-	return dropdown
+	settings:AddChild(typeDropdown)
+
+	if def then
+		for field, fieldType in pairs(def.fields) do
+			settings:AddChild(conditionField(condition, field, fieldType))
+		end
+	end
+
+	local delete = AceGUI:Create("Button")
+	delete:SetText("Delete condition")
+	delete:SetFullWidth(true)
+	delete:SetCallback("OnClick", function()
+		Profile.deleteCondition(rule, condIndex)
+		conditionExpanded[condition] = nil
+		panel:NotifyPanelChanged()
+	end)
+	settings:AddChild(delete)
 end
 
--- spellValues returns the { name = name } map for the spell dropdown. The
--- rule's current spell is added so a stale value still renders.
-local function spellValues(rule)
-	local list = SpellPicker.List()
-	local values = {}
-	for i = 1, #list do
-		values[list[i]] = list[i]
+-- conditionCard builds one condition card: a summary title, an in-body +/−
+-- toggle, and a nested settings group shown only when expanded.
+local function conditionCard(panel, rule, condIndex, container)
+	local condition = rule.conditions[condIndex]
+
+	local card = AceGUI:Create("InlineGroup")
+	card:SetTitle(Conditions.Describe(condition))
+	card:SetFullWidth(true)
+	card:SetLayout("Flow")
+	container:AddChild(card)
+
+	-- in-body toggle that expands/collapses the settings. Full width, as in
+	-- the old editor.
+	local toggle = AceGUI:Create("Button")
+	toggle:SetText(conditionExpanded[condition] and "−" or "+")
+	toggle:SetFullWidth(true)
+	toggle:SetCallback("OnClick", function()
+		conditionExpanded[condition] = not conditionExpanded[condition]
+		panel:NotifyPanelChanged()
+	end)
+	card:AddChild(toggle)
+
+	-- settings group: type dropdown, per-type fields, delete. Only built when
+	-- expanded; a collapsed card shows just the summary and the +/− toggle.
+	if conditionExpanded[condition] then
+		local settings = AceGUI:Create("InlineGroup")
+		settings:SetTitle("")
+		settings:SetFullWidth(true)
+		settings:SetLayout("Flow")
+		card:AddChild(settings)
+		buildConditionSettings(panel, rule, condIndex, settings)
 	end
-	if rule.spell and rule.spell ~= "" then
-		values[rule.spell] = rule.spell
-	end
-	return values
+	return card
 end
+
+
+
+
 
 -- ---------------------------------------------------------------------------
 -- rule card
 -- ---------------------------------------------------------------------------
 
 -- ruleCard builds one rule card: title bar with ▲/▼/Delete buttons, main
--- options, and a Conditions section.
+-- options, and a Conditions section. Control widths match the old editor:
+-- Enabled half, Label full, Spell full, Spell ID half, Target unit half,
+-- Conditions full.
 local function ruleCard(panel, rotation, ruleIndex, container)
 	local rule = rotation.rules[ruleIndex]
 	local rules = rotation.rules
@@ -217,6 +238,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	local card = AceGUI:Create("TitleButtonGroup")
 	card:SetTitle(ruleTitle(rule, ruleIndex))
 	card:SetFullWidth(true)
+	card:SetLayout("Flow")
 	card:SetTitleButtons({
 		{ label = "▲", disabled = ruleIndex <= 1, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex - 1)
@@ -236,6 +258,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	-- main options
 	local enabled = AceGUI:Create("CheckBox")
 	enabled:SetLabel("Enabled")
+	enabled:SetRelativeWidth(0.5)
 	enabled:SetValue(rule.enabled)
 	enabled:SetCallback("OnValueChanged", function(_, _, value)
 		rule.enabled = value
@@ -244,6 +267,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	local labelInput = AceGUI:Create("EditBox")
 	labelInput:SetLabel("Label")
+	labelInput:SetFullWidth(true)
 	labelInput:SetText(rule.name or "")
 	labelInput:SetCallback("OnTextChanged", function(_, _, value)
 		rule.name = value
@@ -252,6 +276,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	local spellDropdown = AceGUI:Create("Dropdown")
 	spellDropdown:SetLabel("Spell")
+	spellDropdown:SetFullWidth(true)
 	spellDropdown:SetList(spellValues(rule))
 	spellDropdown:SetValue(rule.spell or "")
 	spellDropdown:SetCallback("OnValueChanged", function(_, _, value)
@@ -262,6 +287,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	local spellIdInput = AceGUI:Create("EditBox")
 	spellIdInput:SetLabel("Spell ID (optional)")
+	spellIdInput:SetRelativeWidth(0.5)
 	spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
 	spellIdInput:SetCallback("OnTextChanged", function(_, _, value)
 		rule.spellID = tonumber(value)
@@ -270,6 +296,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	local unitDropdown = AceGUI:Create("Dropdown")
 	unitDropdown:SetLabel("Target unit")
+	unitDropdown:SetRelativeWidth(0.5)
 	unitDropdown:SetList(Conditions.Units)
 	unitDropdown:SetValue(rule.unit or "target")
 	unitDropdown:SetCallback("OnValueChanged", function(_, _, value)
@@ -280,6 +307,8 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	-- conditions section: title bar carries the "Add condition" button
 	local conditionsGroup = AceGUI:Create("TitleButtonGroup")
 	conditionsGroup:SetTitle("Conditions")
+	conditionsGroup:SetFullWidth(true)
+	conditionsGroup:SetLayout("Flow")
 	conditionsGroup:SetTitleButtons({
 		{ label = "Add condition", func = function()
 			Profile.addCondition(rule)
@@ -302,8 +331,8 @@ end
 
 local methods = {
 	-- OnAcquire resets to a hidden, empty state. The actual render happens on
-	-- the first OnShow, after AceConfig has stored the option table (which
-	-- carries the rotation) in the widget's userdata.
+	-- the first OnShow, after AceConfig has stored the option path in the
+	-- widget's userdata.
 	["OnAcquire"] = function(self)
 		self:SetWidth(600)
 		self:SetHeight(200)
@@ -351,6 +380,7 @@ local methods = {
 		local rulesSection = AceGUI:Create("TitleButtonGroup")
 		rulesSection:SetTitle("Rules")
 		rulesSection:SetFullWidth(true)
+		rulesSection:SetLayout("Flow")
 		rulesSection:SetTitleButtons({
 			{ label = "Add rule", func = function()
 				Profile.addRule(rotation)
