@@ -60,7 +60,7 @@ local function setSpellTooltip(fontString, rule)
 	fontString:SetScript("OnEnter", function(self)
 		local link = SpellPicker.Link(rule)
 		if not link then return end
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+		GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
 		GameTooltip:SetHyperlink(link)
 		GameTooltip:Show()
 	end)
