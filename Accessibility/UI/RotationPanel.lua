@@ -151,8 +151,10 @@ end
 -- buildConditionSettings fills the settings group with the type dropdown,
 -- one control per registry-declared field, and a delete button. Widths match
 -- the old editor: the type and delete are full width, fields keep their
--- default single width.
-local function buildConditionSettings(panel, rule, condIndex, settings)
+-- buildConditionSettings fills the expanded card with the type dropdown and
+-- one control per registry-declared field. Widths match the old editor: the
+-- type is full width, fields keep their default single width.
+local function buildConditionSettings(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
 	local def = Conditions.Registry[condition.type]
 
@@ -165,18 +167,18 @@ local function buildConditionSettings(panel, rule, condIndex, settings)
 		condition.type = value
 		panel:NotifyPanelChanged()
 	end)
-	settings:AddChild(typeDropdown)
+	container:AddChild(typeDropdown)
 
 	if def then
 		for field, fieldType in pairs(def.fields) do
-			settings:AddChild(conditionField(condition, field, fieldType))
+			container:AddChild(conditionField(condition, field, fieldType))
 		end
 	end
 end
 
 -- conditionCard builds one condition card: the summary is the title, with
 -- +/− (expand/collapse settings) and Delete as title buttons, and the
--- settings group below, shown only when expanded.
+-- settings controls below, shown only when expanded.
 local function conditionCard(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
 
@@ -197,15 +199,12 @@ local function conditionCard(panel, rule, condIndex, container)
 	})
 	container:AddChild(card)
 
-	-- settings group: type dropdown, per-type fields. Only built when
+	-- settings controls: type dropdown, per-type fields. Only built when
 	-- expanded; a collapsed card shows just the summary and title buttons.
+	-- They are added straight to the card (no nested InlineGroup), so no
+	-- extra border box appears inside the card.
 	if conditionExpanded[condition] then
-		local settings = AceGUI:Create("InlineGroup")
-		settings:SetTitle("")
-		settings:SetFullWidth(true)
-		settings:SetLayout("Flow")
-		card:AddChild(settings)
-		buildConditionSettings(panel, rule, condIndex, settings)
+		buildConditionSettings(panel, rule, condIndex, card)
 	end
 	return card
 end
