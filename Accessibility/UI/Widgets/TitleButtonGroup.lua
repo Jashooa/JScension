@@ -31,6 +31,9 @@ local methods = {
 		-- collapsed condition card); every new use starts with the border
 		self.borderVisible = true
 		self.border:Show()
+		-- drop any tooltip scripts left by the previous owner's titlebar
+		self.titlebar:SetScript("OnEnter", nil)
+		self.titlebar:SetScript("OnLeave", nil)
 	end,
 
 	["SetTitle"] = function(self, title)
@@ -148,10 +151,20 @@ local function Constructor()
 	content:SetPoint("TOPLEFT", 10, -10)
 	content:SetPoint("BOTTOMRIGHT", -10, 10)
 
+	-- an invisible, mouse-enabled frame over the title bar. FontStrings are
+	-- Regions, not Frames, so they cannot reliably receive mouse events; the
+	-- titlebar frame gives the title row a hover surface for tooltips.
+	local titlebar = CreateFrame("Frame", nil, frame)
+	titlebar:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+	titlebar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+	titlebar:SetHeight(18)
+	titlebar:EnableMouse(true)
+
 	local widget = {
 		frame = frame,
 		content = content,
 		titletext = titletext,
+		titlebar = titlebar,
 		border = border,
 		borderVisible = true,
 		type = Type,

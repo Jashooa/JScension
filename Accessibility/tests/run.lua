@@ -840,6 +840,8 @@ do
 			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
 			Hide = function(self) self.hidden = true end,
 			Show = function(self) self.hidden = false; shown = shown + 1 end,
+			EnableMouse = function() end, SetHeight = function() end,
+			SetScript = function() end,
 			GetFrameLevel = function() return 1 end }
 		return frame
 	end
@@ -919,7 +921,8 @@ do
 		return { SetFrameStrata = function() end,
 			CreateFontString = function() return { SetPoint = function() end, SetJustifyH = function() end, SetHeight = function() end, SetText = function() end } end,
 			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
-			SetScript = function() end, Hide = function() end, Show = function() end }
+			SetScript = function() end, Hide = function() end, Show = function() end,
+			EnableMouse = function() end, SetHeight = function() end }
 	end
 	widgetEnv.UIParent = {}
 

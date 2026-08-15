@@ -265,8 +265,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			panel:NotifyPanelChanged()
 		end },
 	})
-	-- hovering the card title shows the spell tooltip (icon included)
-	setSpellTooltip(card.titletext, rule)
+	-- hovering the card title shows the spell tooltip (icon included). The
+	-- titlebar frame is the hover surface (fontstrings are Regions and cannot
+	-- reliably receive mouse events).
+	setSpellTooltip(card.titlebar, rule)
 	container:AddChild(card)
 
 	-- main options
