@@ -38,41 +38,52 @@ Two components live here:
 - Test account is throwaway (`weirded.rsbot@gmail.com`); risky in-game tests
   happen only on it, and only after telling the user.
 
-## Layout
+## Layout — a dependency layering, not a file grouping
+
+The addon is arranged as four layers with a strict dependency direction:
 
 ```
-Solution/
-  Accessibility/
-    Accessibility.lua        entry point (AceAddon)
-    Accessibility.toc        load order: Utils -> Game -> Core -> UI -> entry
-    Utils/                   cross-cutting helpers (may touch WoW API)
-      Constants.lua Compare.lua Coerce.lua Log.lua
-      SpellPicker.lua        cached spellbook resolver
-      SpellTooltip.lua       GameTooltip attachment helper
-    Game/                    live game-state readers
-      Unit.lua Aura.lua Cast.lua
-    Core/                    engine and configuration
-      Compatibility.lua      the only seam to the injected shim
-      Profile.lua            saved-variable schema + CRUD
-      Conditions.lua         condition registry (types, fields, eval, describe)
-      Rotation.lua           the rotation engine (NextRule / CastBest)
-      Config.lua             declarative AceConfig option tree
-    UI/
-      Widgets/TitleButtonGroup.lua   reusable titled container with title-bar buttons
-      RotationButton.lua     the in-world one-button cast button
-      RotationPanel.lua      the rule editor (registered AceGUI widget)
-    Libs/                    bundled Ace3 (AceConfig, AceGUI, ...) — vendored, committed
-    tests/run.lua            pure-Lua test harness (lua5.1 tests/run.lua)
-  Compatibility/
-    shim.c                   the injected DLL (exposes the Compatibility global)
-    injector.c               injects the DLL into the running game
-    compatibility.def build.sh
-  bin/                       build output (gitignored)
-  config.sh                  shared paths (prefix, game dir, wine, names)
-  deploy.sh                  build shim + deploy addon + shim
-  inject.sh                  inject the shim into the running game
-  research/                  RE notes, packet captures, API documentation
+Utils  ->  Game  ->  Core  ->  UI
+(helpers)  (state)   (engine)  (frames)
 ```
+
+Each layer may use anything in the layers before it; nothing may reach
+forward. That direction exists for three reasons:
+
+**1. The engine must be testable without frames.** `Core/` (rotation engine,
+profile, conditions) never creates a frame or touches AceGUI — it reads game
+state through `Game/` and helpers through `Utils/`, both of which the test
+harness fakes with a plain table. That is why the engine lives apart from the
+UI: the pure-Lua suite in `tests/run.lua` loads only `Utils`+`Game`+`Core`
+and exercises real decision logic against a fake WoW API.
+
+**2. Each fact about this client lives in one place.** The client diverges
+from stock WoW in small ways (no spell-ID lookup table; `GetSpellInfo` has no
+ID return; fontstrings can't take mouse events). The layer owning each fact
+is the only place it is encoded:
+
+- `Game/` — how live game state is read (units, auras, casts).
+- `Utils/SpellPicker.lua` — the spellbook's name-keyed cache, the single
+  owner of "spells are stored by name".
+- `Utils/SpellTooltip.lua` — how tooltips get attached, the single owner of
+  "use a real mouse frame, not the fontstring".
+- `Core/Compatibility.lua` — the only file that knows the injected shim
+  exists, the only place a protected call is made. Every other module calls
+  `Compatibility.Cast` without knowing how it works, so a change to the
+  shim's protocol touches one file.
+
+**3. `Core/` vs `UI/` is data vs frames.** `Core/Config.lua` builds the
+declarative AceConfig option tree — data, no widgets — and is therefore
+testable. The actual frame code lives in `UI/`: `RotationButton.lua` (the
+in-world button), `RotationPanel.lua` (the rule editor), and the one reusable
+widget, `Widgets/TitleButtonGroup.lua`. UI code is deliberately kept thin and
+explicitly excluded from the test harness, because layout and mouse behaviour
+are client behaviour no fake can verify.
+
+`Compatibility/` (the injected DLL + injector, built with mingw) is the one
+non-Lua component. It is a native peer of `Core/Compatibility.lua`, not part
+of the addon's Lua layering.
+
 
 ## The compatibility seam
 
