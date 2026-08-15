@@ -330,6 +330,8 @@ local methods = {
 		self:SetHeight(200)
 		self.titletext:SetText("")
 		self.rendered = false
+		self.rebuildPending = nil
+		self.frame:SetScript("OnUpdate", nil)
 	end,
 
 	-- SetText is called by AceConfig's execute-control setup; the panel has
@@ -357,17 +359,20 @@ local methods = {
 	end,
 
 	-- NotifyPanelChanged is called by every mutation closure. It must NOT
-	-- rebuild in place: the closure runs inside a widget callback, and
+	-- rebuild synchronously: the closure runs inside a widget callback, and
 	-- releasing children there would pool the very button being clicked.
-	-- AceConfig defers its whole-dialog refresh to the next frame, which
-	-- releases and re-creates this panel safely (OnShow re-renders).
+	-- The rebuild is deferred one frame via a one-shot OnUpdate, so the
+	-- click finishes before anything is released. The panel and its parent
+	-- ScrollFrame survive (unlike a full dialog refresh), so the scroll
+	-- position is preserved instead of jumping.
 	["NotifyPanelChanged"] = function(self)
-		local config = ns.Config
-		if config then
-			config.NotifyOptionsChanged()
-		else
+		if self.rebuildPending then return end
+		self.rebuildPending = true
+		self.frame:SetScript("OnUpdate", function()
+			self.frame:SetScript("OnUpdate", nil)
+			self.rebuildPending = nil
 			self:RenderPanel()
-		end
+		end)
 	end,
 
 	["RenderPanel"] = function(self)
