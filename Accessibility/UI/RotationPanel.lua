@@ -46,14 +46,17 @@ local function ruleTitle(rule, index)
 	else
 		label = "Rule " .. index
 	end
-	return ("|T%s:28:28|t %s"):format(ruleIcon(rule), label)
+	return ("|T%s:32:32|t %s"):format(ruleIcon(rule), label)
 end
 
 -- setSpellTooltip wires GameTooltip to a fontstring so hovering it shows the
 -- spell's tooltip. GetSpellLink returns a usable hyperlink for the name;
 -- this client's GetSpellInfo exposes no spell ID, so no ID is resolved.
+-- Fontstrings are not mouse-enabled by default, so OnEnter never fires
+-- without EnableMouse.
 local function setSpellTooltip(fontString, rule)
 	if not fontString.SetScript then return end
+	fontString:EnableMouse(true)
 	fontString:SetScript("OnEnter", function(self)
 		local link = SpellPicker.Link(rule)
 		if not link then return end
