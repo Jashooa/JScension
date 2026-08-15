@@ -403,6 +403,13 @@ local methods = {
 			end
 		end
 		self:DoLayout()
+		-- the panel's height changed; re-run the parent's layout (the
+		-- ScrollFrame that hosts this panel) so its content height and
+		-- scrollbar range track the new content length
+		local parent = self.parent
+		if parent and parent.DoLayout then
+			parent:DoLayout()
+		end
 	end,
 
 	-- PanelRotation resolves this panel's rotation from the option path

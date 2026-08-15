@@ -197,7 +197,7 @@ loadModule(ROOT .. "Game/Aura.lua", ns)
 loadModule(ROOT .. "Game/Cast.lua", ns)
 loadModule(ROOT .. "Core/Compatibility.lua", ns)
 loadModule(ROOT .. "Core/Profile.lua", ns)
-loadModule(ROOT .. "Core/SpellPicker.lua", ns)
+loadModule(ROOT .. "Game/SpellPicker.lua", ns)
 loadModule(ROOT .. "Core/Conditions.lua", ns)
 loadModule(ROOT .. "Core/Rotation.lua", ns)
 

@@ -13,11 +13,11 @@ Utils\Log.lua
 
 Game\Unit.lua
 Game\Aura.lua
+Game\SpellPicker.lua
 Game\Cast.lua
 
 Core\Compatibility.lua
 Core\Profile.lua
-Core\SpellPicker.lua
 Core\Conditions.lua
 Core\Rotation.lua
 Core\Config.lua
