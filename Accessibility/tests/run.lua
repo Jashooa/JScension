@@ -782,6 +782,87 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- TitleButtonGroup widget tests
+-- ---------------------------------------------------------------------------
+
+do
+	-- TitleButtonGroup is a reusable container with title-bar buttons: it
+	-- must register, install buttons right-to-left, show them (AceGUI buttons
+	-- start hidden), and release them on release.
+	local created = {}
+	local releasedButtons = 0
+	local fakeAce = {
+		RegisterWidgetType = function(self, name, ctor, ver) created[name] = ctor end,
+		GetWidgetVersion = function() return nil end,
+		Release = function(self, widget)
+			if widget.type == "Button" then releasedButtons = releasedButtons + 1 end
+			if widget.OnRelease then widget:OnRelease() end
+		end,
+		RegisterAsContainer = function(self, widget)
+			widget.children = widget.children or {}
+			widget.userdata = widget.userdata or {}
+			widget.SetWidth = function() end
+			widget.SetHeight = function() end
+			widget.SetFullWidth = function() end
+			widget.AddChild = function(self, child) self.children[#self.children + 1] = child end
+			widget.SetUserData = function(self, k, v) self.userdata[k] = v end
+			widget.GetUserData = function(self, k) return self.userdata[k] end
+			widget.GetUserDataTable = function(self) return self.userdata end
+			return widget
+		end,
+	}
+	local widgetEnv = setmetatable({}, { __index = _G })
+	widgetEnv.LibStub = function(name)
+		if name == "AceGUI-3.0" then return fakeAce end
+		return nil
+	end
+	local shown = 0
+	widgetEnv.CreateFrame = function()
+		return { SetFrameStrata = function() end,
+			CreateFontString = function() return { SetPoint = function() end, SetJustifyH = function() end, SetHeight = function() end, SetText = function() end } end,
+			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
+			Hide = function() end, Show = function() shown = shown + 1 end, GetFrameLevel = function() return 1 end }
+	end
+	widgetEnv.UIParent = {}
+
+	-- the constructor creates Button children via AceGUI:Create; provide it
+	fakeAce.Create = function(self, type)
+		local w = { type = type, children = {}, userdata = {}, events = {},
+			frame = { SetParent = function() end, SetPoint = function() end, GetWidth = function() return 10 end,
+				GetHeight = function() end, ClearAllPoints = function() end, SetFrameLevel = function() end,
+				SetHeight = function() end, Show = function() shown = shown + 1 end, Hide = function() end,
+				GetFrameLevel = function() return 1 end },
+			SetText = function() end, SetAutoWidth = function() end,
+			SetDisabled = function(self, v) self.disabled = v end,
+			SetCallback = function(self, name, fn) self.events[name] = fn end,
+		}
+		return w
+	end
+
+	local loadChunk = assert(loadfile(ROOT .. "UI/Widgets/TitleButtonGroup.lua"))
+	setfenv(loadChunk, widgetEnv)
+	loadChunk("Accessibility", ns)
+
+	ok("TitleButtonGroup registered", created.TitleButtonGroup ~= nil)
+	local section = created.TitleButtonGroup()
+	section:OnAcquire()
+	local clicked = 0
+	section:SetTitleButtons({
+		{ label = "A", func = function() clicked = clicked + 1 end },
+		{ label = "B", disabled = true, func = function() end },
+	})
+	ok("title buttons installed", section.titleButtons ~= nil and #section.titleButtons == 2)
+	ok("buttons were shown", shown >= 2)
+	ok("first button enabled", section.titleButtons[1].disabled ~= true)
+	ok("second button disabled", section.titleButtons[2].disabled == true)
+	section.titleButtons[1].events.OnClick(section.titleButtons[1])
+	eq("button OnClick fires", clicked, 1)
+	releasedButtons = 0
+	section:OnRelease()
+	eq("OnRelease releases title buttons", releasedButtons, 2)
+end
+
+-- ---------------------------------------------------------------------------
 -- RotationPanel widget tests
 -- ---------------------------------------------------------------------------
 

@@ -214,13 +214,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	local rule = rotation.rules[ruleIndex]
 	local rules = rotation.rules
 
-	local card = AceGUI:Create("InlineGroup")
+	local card = AceGUI:Create("TitleButtonGroup")
 	card:SetTitle(ruleTitle(rule, ruleIndex))
 	card:SetFullWidth(true)
-	container:AddChild(card)
-
-	-- title-bar buttons, anchored to the card's top-right (right to left)
-	local buttonOrder = {
+	card:SetTitleButtons({
 		{ label = "▲", disabled = ruleIndex <= 1, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex - 1)
 			panel:NotifyPanelChanged()
@@ -233,33 +230,8 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			Profile.deleteRule(rotation, ruleIndex)
 			panel:NotifyPanelChanged()
 		end },
-	}
-	local offset = 14
-	local titleButtons = {}
-	for i = #buttonOrder, 1, -1 do
-		local spec = buttonOrder[i]
-		local button = AceGUI:Create("Button")
-		button:SetText(spec.label)
-		button:SetAutoWidth(true)
-		button.frame:SetParent(card.frame)
-		button.frame:SetFrameLevel((card.frame:GetFrameLevel() or 1) + 2)
-		button.frame:SetPoint("TOPRIGHT", card.frame, "TOPRIGHT", -offset, 0)
-		button:SetDisabled(spec.disabled)
-		button:SetCallback("OnClick", spec.func)
-		-- AceGUI buttons start hidden and are only shown by AddChild; these
-		-- are anchored to the card frame instead, so show them explicitly
-		button.frame:Show()
-		titleButtons[#titleButtons + 1] = button
-		offset = offset + (button.frame:GetWidth() or 0) + 2
-	end
-	-- the title buttons are anchored to the card frame, not AddChild'd, so the
-	-- panel's ReleaseChildren never sees them; release them when the card is
-	-- released so the AceGUI pool stays consistent
-	card:SetCallback("OnRelease", function()
-		for i = 1, #titleButtons do
-			AceGUI:Release(titleButtons[i])
-		end
-	end)
+	})
+	container:AddChild(card)
 
 	-- main options
 	local enabled = AceGUI:Create("CheckBox")
@@ -305,18 +277,16 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(unitDropdown)
 
-	-- conditions section
-	local conditionsGroup = AceGUI:Create("InlineGroup")
+	-- conditions section: title bar carries the "Add condition" button
+	local conditionsGroup = AceGUI:Create("TitleButtonGroup")
 	conditionsGroup:SetTitle("Conditions")
+	conditionsGroup:SetTitleButtons({
+		{ label = "Add condition", func = function()
+			Profile.addCondition(rule)
+			panel:NotifyPanelChanged()
+		end },
+	})
 	card:AddChild(conditionsGroup)
-
-	local addCondition = AceGUI:Create("Button")
-	addCondition:SetText("Add condition")
-	addCondition:SetCallback("OnClick", function()
-		Profile.addCondition(rule)
-		panel:NotifyPanelChanged()
-	end)
-	conditionsGroup:AddChild(addCondition)
 
 	for i = 1, #rule.conditions do
 		conditionCard(panel, rule, i, conditionsGroup)
@@ -376,13 +346,26 @@ local methods = {
 		local rotation = self:PanelRotation()
 		if not rotation then return end
 		self:ReleaseChildren()
+
+		-- Rules section: its title bar carries the "Add rule" button
+		local rulesSection = AceGUI:Create("TitleButtonGroup")
+		rulesSection:SetTitle("Rules")
+		rulesSection:SetFullWidth(true)
+		rulesSection:SetTitleButtons({
+			{ label = "Add rule", func = function()
+				Profile.addRule(rotation)
+				self:NotifyPanelChanged()
+			end },
+		})
+		self:AddChild(rulesSection)
+
 		if #rotation.rules == 0 then
 			local emptyLabel = AceGUI:Create("Label")
-			emptyLabel:SetText("No rules. Add one below.")
-			self:AddChild(emptyLabel)
+			emptyLabel:SetText("No rules. Add one above.")
+			rulesSection:AddChild(emptyLabel)
 		else
 			for i = 1, #rotation.rules do
-				ruleCard(self, rotation, i, self)
+				ruleCard(self, rotation, i, rulesSection)
 			end
 		end
 		self:DoLayout()
