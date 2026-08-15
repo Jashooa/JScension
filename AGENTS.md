@@ -39,17 +39,20 @@ Two components live here:
 - Test account is throwaway (`weirded.rsbot@gmail.com`); risky in-game tests
   happen only on it, and only after telling the user.
 
-## Layout — a dependency layering, not a file grouping
+## Layout — role groupings and load order
 
-The addon is arranged as four layers with a strict dependency direction:
+The addon is grouped by role, not by a dependency contract:
 
 ```
 Utils  ->  Game  ->  Core  ->  UI
 (helpers)  (state)   (engine)  (frames)
 ```
 
-Each layer may use anything in the layers before it; nothing may reach
-forward. That direction exists for three reasons:
+This is the TOC **load order** (plus the entry file last): each file loads
+after the modules it uses. It is not a strict "may only import from the left"
+rule — cross-references happen where they make sense. `Core/Config.lua`
+calls `ns.RotationButton` setters, so Core reaches into UI. The grouping
+exists for three reasons:
 
 **1. The engine must be testable without frames.** `Core/` (rotation engine,
 profile, conditions) never creates a frame or touches AceGUI — it reads game
@@ -60,7 +63,7 @@ and exercises real decision logic against a fake WoW API.
 
 **2. Each fact about this client lives in one place.** The client diverges
 from stock WoW in small ways (no spell-ID lookup table; `GetSpellInfo` has no
-ID return; fontstrings can't take mouse events). The layer owning each fact
+ID return; fontstrings can't take mouse events). The file owning each fact
 is the only place it is encoded:
 
 - `Game/` — how live game state is read (units, auras, casts).
@@ -83,7 +86,7 @@ are client behaviour no fake can verify.
 
 `Compatibility/` (the injected DLL + injector, built with mingw) is the one
 non-Lua component. It is a native peer of `Core/Compatibility.lua`, not part
-of the addon's Lua layering.
+of the addon's Lua load order.
 
 
 ## Two non-obvious rules the code comments will not save you from
