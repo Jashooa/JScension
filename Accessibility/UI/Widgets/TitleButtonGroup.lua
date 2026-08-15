@@ -27,6 +27,10 @@ local methods = {
 		self:SetHeight(100)
 		self:SetTitle("")
 		self.titleButtons = nil
+		-- a pooled widget may have been released with its border hidden (a
+		-- collapsed condition card); every new use starts with the border
+		self.borderVisible = true
+		self.border:Show()
 	end,
 
 	["SetTitle"] = function(self, title)

@@ -818,10 +818,13 @@ do
 	end
 	local shown = 0
 	widgetEnv.CreateFrame = function()
-		return { SetFrameStrata = function() end,
+		local frame = { SetFrameStrata = function() end,
 			CreateFontString = function() return { SetPoint = function() end, SetJustifyH = function() end, SetHeight = function() end, SetText = function() end } end,
 			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
-			Hide = function() end, Show = function() shown = shown + 1 end, GetFrameLevel = function() return 1 end }
+			Hide = function(self) self.hidden = true end,
+			Show = function(self) self.hidden = false; shown = shown + 1 end,
+			GetFrameLevel = function() return 1 end }
+		return frame
 	end
 	widgetEnv.UIParent = {}
 
@@ -860,6 +863,14 @@ do
 	releasedButtons = 0
 	section:OnRelease()
 	eq("OnRelease releases title buttons", releasedButtons, 2)
+
+	-- a widget released with its border hidden (collapsed condition card)
+	-- must come back border-visible when re-acquired from the pool
+	section:SetBorderVisible(false)
+	ok("border hidden when collapsed", section.border.hidden == true)
+	section:OnAcquire()
+	ok("border shown on re-acquire", section.border.hidden == false)
+	ok("borderVisible reset on re-acquire", section.borderVisible == true)
 end
 
 -- ---------------------------------------------------------------------------
