@@ -98,12 +98,13 @@ local function rotationGroup(rotation, index)
 				},
 			},
 		},
-		-- the rule cards are rendered by the RotationPanel widget; the leaf
-		-- option carries the rotation so the widget knows what to draw
+		-- the rule cards are rendered by the RotationPanel widget. The widget
+		-- finds its rotation from its option path (InjectInfo stores it in
+		-- userdata), so the option carries no custom fields (AceConfig rejects
+		-- unknown parameters).
 		rotationPanel = {
 			type = "execute", name = "", control = "RotationPanel",
 			width = "full", order = 2,
-			rotation = rotation,
 		},
 	}
 

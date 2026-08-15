@@ -714,13 +714,13 @@ do
 	ok("rotation panel option present", panelOption ~= nil)
 	ok("panel is the custom widget", panelOption.control == "RotationPanel")
 	ok("panel is an execute leaf", panelOption.type == "execute")
-	ok("panel carries its rotation", panelOption.rotation == prof().rotations[1])
+	ok("panel option has no custom fields", panelOption.rotation == nil and panelOption.func == nil)
 	ok("no declarative rules group", rotGroup.args.rotation1.args.rules == nil)
 	ok("no rule cards in the tree", rotGroup.args.rotation1.args.rule1 == nil)
 
 	-- each rotation gets its own panel bound to its own rotation
 	local panelTwo = rotGroup.args.rotation2.args.rotationPanel
-	ok("rotation2 panel carries rotation2", panelTwo ~= nil and panelTwo.rotation == prof().rotations[2])
+	ok("rotation2 panel present", panelTwo ~= nil and panelTwo.control == "RotationPanel")
 
 	-- general options live on the Rotations page, above its sub-tree
 	ok("no root general options", opts.args.auto == nil and opts.args.general == nil)
@@ -758,7 +758,7 @@ do
 	rotGroup.args.rotation2.args.settings.args.delete.func()
 	eq("delete via tree", #prof().rotations, 2)
 	rotGroup = Config.BuildOptions().args.rotations
-	ok("panel rebuilt with fresh rotation", rotGroup.args.rotation1.args.rotationPanel.rotation == prof().rotations[1])
+	ok("panel rebuilt after rotation change", rotGroup.args.rotation1.args.rotationPanel ~= nil)
 end
 
 -- ---------------------------------------------------------------------------
@@ -779,6 +779,63 @@ do
 	eq("deleteCondition keeps second", rotation.rules[1].conditions[1].type, "target_type")
 	Profile.deleteCondition(rotation.rules[1], 1)
 	eq("deleteCondition empties", #rotation.rules[1].conditions, 0)
+end
+
+-- ---------------------------------------------------------------------------
+-- RotationPanel widget tests
+-- ---------------------------------------------------------------------------
+
+do
+	-- PanelRotation resolves the panel's rotation from the option path
+	-- AceConfig stores in userdata. Load the widget in a fake-AceGUI env and
+	-- drive the resolution method directly.
+	local created = {}
+	local fakeAce = {
+		RegisterWidgetType = function(self, name, ctor, ver) created[name] = ctor end,
+		GetWidgetVersion = function() return nil end,
+		RegisterAsContainer = function(self, widget)
+			widget.userdata = widget.userdata or {}
+			widget.SetUserData = function(self, k, v) self.userdata[k] = v end
+			widget.GetUserData = function(self, k) return self.userdata[k] end
+			widget.GetUserDataTable = function(self) return self.userdata end
+			return widget
+		end,
+	}
+	local widgetEnv = setmetatable({}, { __index = _G })
+	widgetEnv.LibStub = function(name)
+		if name == "AceGUI-3.0" then return fakeAce end
+		return nil
+	end
+	widgetEnv.CreateFrame = function()
+		return { SetFrameStrata = function() end,
+			CreateFontString = function() return { SetPoint = function() end, SetJustifyH = function() end, SetHeight = function() end, SetText = function() end } end,
+			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
+			SetScript = function() end, Hide = function() end, Show = function() end }
+	end
+	widgetEnv.UIParent = {}
+
+	local rotationList = {
+		{ name = "Single", rules = {} },
+		{ name = "AoE", rules = {} },
+	}
+	local loadChunk = assert(loadfile(ROOT .. "UI/RotationPanel.lua"))
+	setfenv(loadChunk, widgetEnv)
+	local testNs = {
+		Profile = { rotations = function() return rotationList end },
+		Conditions = { Registry = {}, TypeList = function() return {} end, Describe = function() return "x" end,
+			Units = {}, Ops = {}, Kinds = {}, TargetTypes = {} },
+		SpellPicker = { Icon = function() return nil end, List = function() return {} end },
+	}
+	loadChunk("Accessibility", testNs)
+
+	ok("RotationPanel registered", created.RotationPanel ~= nil)
+	local panel = created.RotationPanel()
+	panel:SetUserData("path", { "rotations", "rotation1", "rotationPanel" })
+	ok("PanelRotation resolves rotation1", panel:PanelRotation() == rotationList[1])
+	panel:SetUserData("path", { "rotations", "rotation2", "rotationPanel" })
+	ok("PanelRotation resolves rotation2", panel:PanelRotation() == rotationList[2])
+	panel:SetUserData("path", {})
+	ok("PanelRotation nil without rotation key", panel:PanelRotation() == nil)
 end
 
 -- Log tests

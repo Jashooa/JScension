@@ -370,7 +370,7 @@ local methods = {
 	end,
 
 	["RenderPanel"] = function(self)
-		local rotation = self:GetUserData("option") and self:GetUserData("option").rotation
+		local rotation = self:PanelRotation()
 		if not rotation then return end
 		self:ReleaseChildren()
 		if #rotation.rules == 0 then
@@ -383,6 +383,27 @@ local methods = {
 			end
 		end
 		self:DoLayout()
+	end,
+
+	-- PanelRotation resolves this panel's rotation from the option path
+	-- AceConfig stored in the widget userdata: the path is the arg-key chain
+	-- from the root (e.g. {"rotations", "rotation1", "rotationPanel"}), and
+	-- the "rotationN" element indexes into the live rotation list.
+	["PanelRotation"] = function(self)
+		local user = self:GetUserDataTable()
+		local path = user.path
+		if type(path) ~= "table" then return nil end
+		for i = 1, #path do
+			local key = path[i]
+			if type(key) == "string" then
+				local index = key:match("^rotation(%d+)$")
+				if index then
+					local list = Profile.rotations()
+					return list[tonumber(index)]
+				end
+			end
+		end
+		return nil
 	end,
 }
 
