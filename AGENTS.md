@@ -18,7 +18,8 @@ Two components live here:
 - `Compatibility/` — the shim: a Win32 DLL injected into the game plus a
   small injector EXE, built with mingw-w64. The game's protected
   environment blocks addon code from calling secure functions, so the shim
-  provides a trusted execution seam (see below).
+  provides a trusted execution seam; `Core/Compatibility.lua` documents how
+  it is used.
 
 ## Hard constraints
 
@@ -85,35 +86,17 @@ non-Lua component. It is a native peer of `Core/Compatibility.lua`, not part
 of the addon's Lua layering.
 
 
-## The compatibility seam
+## Two non-obvious rules the code comments will not save you from
 
-`Core/Compatibility.lua` is the only file that touches the `Compatibility`
-global installed by the injected DLL. Everything else calls through it:
-
-- `Compatibility.Call(fmt, ...)` builds one Lua script string (values
-  escaped with `%q`) and runs it through the shim in a trusted context.
-- `Compatibility.Cast(name, id, selfCast)` wraps `CastSpellByName` /
-  `CastSpellByID` — the addon never calls a protected function directly.
-- `Compatibility.IsCompatible()` caches an `issecure()` probe result. The
-  shim can attach after addon load, so a cached false re-probes once the
-  `Compatibility` global appears. `/acc status` prints the live value.
-
-The injector must be re-run after every game start: `./inject.sh` (or the
-game restarts without the seam). Watch `drive_c/local/compatibility.log`.
-
-## The rotation engine
-
-Rules live in the profile as an ordered list. `Rotation.NextRule()` returns
-the first rule that passes every gate; `Rotation.CastBest()` casts it. Gates:
-target exists/alive, spell known, usable, cooldown, in range, every
-condition, anti-spam. Conditions are data driven from `Core/Conditions.lua`'s
-registry — adding a condition type touches only that file.
-
-The panel (`UI/RotationPanel.lua`) renders the rule editor as a registered
-AceGUI widget. It rebuilds in place on a deferred one-frame `OnUpdate` (never
-synchronously from a button callback — releasing widgets mid-callback pools
-the clicked button and breaks the UI). The hosting ScrollFrame is re-laid-out
-after each rebuild so the scrollbar tracks content length.
+- **Rebuild the panel only on a deferred one-frame `OnUpdate`, never
+  synchronously from a button callback.** Releasing AceGUI children while the
+  clicked button's callback is still on the stack pools the very widget being
+  clicked and the whole rule list disappears. The panel's
+  `NotifyPanelChanged` already does the right thing — preserve that.
+- **After an in-place panel rebuild, re-run the parent's layout** so the
+  hosting ScrollFrame's content height and scrollbar range track the new
+  content length. `RenderPanel` already calls `self.parent:DoLayout()` — keep
+  it when touching the render path.
 
 ## Conventions
 
