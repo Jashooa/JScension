@@ -39,20 +39,16 @@ Two components live here:
 - Test account is throwaway (`weirded.rsbot@gmail.com`); risky in-game tests
   happen only on it, and only after telling the user.
 
-## Layout — role groupings and load order
+## Layout — folders by role, TOC in load order
 
-The addon is grouped by role, not by a dependency contract:
+The addon's Lua files are grouped by role: `Utils/` helpers, `Game/` live
+game-state readers, `Core/` engine + configuration, `UI/` frames. The TOC
+loads them in that order (entry file last) so each file's dependencies are
+already loaded. There is no dependency rule between the folders — a file
+uses whatever it needs (`Core/Config.lua` calls `ns.RotationButton`, so Core
+reaches into UI).
 
-```
-Utils  ->  Game  ->  Core  ->  UI
-(helpers)  (state)   (engine)  (frames)
-```
-
-This is the TOC **load order** (plus the entry file last): each file loads
-after the modules it uses. It is not a strict "may only import from the left"
-rule — cross-references happen where they make sense. `Core/Config.lua`
-calls `ns.RotationButton` setters, so Core reaches into UI. The grouping
-exists for three reasons:
+The grouping exists for three reasons:
 
 **1. The engine must be testable without frames.** `Core/` (rotation engine,
 profile, conditions) never creates a frame or touches AceGUI — it reads game
