@@ -832,7 +832,7 @@ do
 				GetHeight = function() end, ClearAllPoints = function() end, SetFrameLevel = function() end,
 				SetHeight = function() end, Show = function() shown = shown + 1 end, Hide = function() end,
 				GetFrameLevel = function() return 1 end },
-			SetText = function() end, SetAutoWidth = function() end,
+			SetText = function() end, SetAutoWidth = function() end, SetHeight = function() end,
 			SetDisabled = function(self, v) self.disabled = v end,
 			SetCallback = function(self, name, fn) self.events[name] = fn end,
 		}

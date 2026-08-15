@@ -172,42 +172,33 @@ local function buildConditionSettings(panel, rule, condIndex, settings)
 			settings:AddChild(conditionField(condition, field, fieldType))
 		end
 	end
-
-	local delete = AceGUI:Create("Button")
-	delete:SetText("Delete condition")
-	delete:SetFullWidth(true)
-	delete:SetCallback("OnClick", function()
-		Profile.deleteCondition(rule, condIndex)
-		conditionExpanded[condition] = nil
-		panel:NotifyPanelChanged()
-	end)
-	settings:AddChild(delete)
 end
 
--- conditionCard builds one condition card: a summary title, an in-body +/−
--- toggle, and a nested settings group shown only when expanded.
+-- conditionCard builds one condition card: the summary is the title, with
+-- +/− (expand/collapse settings) and Delete as title buttons, and the
+-- settings group below, shown only when expanded.
 local function conditionCard(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
 
-	local card = AceGUI:Create("InlineGroup")
+	local card = AceGUI:Create("TitleButtonGroup")
 	card:SetTitle(Conditions.Describe(condition))
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
+	card:SetTitleButtons({
+		{ label = conditionExpanded[condition] and "−" or "+", func = function()
+			conditionExpanded[condition] = not conditionExpanded[condition]
+			panel:NotifyPanelChanged()
+		end },
+		{ label = "Delete", func = function()
+			Profile.deleteCondition(rule, condIndex)
+			conditionExpanded[condition] = nil
+			panel:NotifyPanelChanged()
+		end },
+	})
 	container:AddChild(card)
 
-	-- in-body toggle that expands/collapses the settings. Full width, as in
-	-- the old editor.
-	local toggle = AceGUI:Create("Button")
-	toggle:SetText(conditionExpanded[condition] and "−" or "+")
-	toggle:SetFullWidth(true)
-	toggle:SetCallback("OnClick", function()
-		conditionExpanded[condition] = not conditionExpanded[condition]
-		panel:NotifyPanelChanged()
-	end)
-	card:AddChild(toggle)
-
-	-- settings group: type dropdown, per-type fields, delete. Only built when
-	-- expanded; a collapsed card shows just the summary and the +/− toggle.
+	-- settings group: type dropdown, per-type fields. Only built when
+	-- expanded; a collapsed card shows just the summary and title buttons.
 	if conditionExpanded[condition] then
 		local settings = AceGUI:Create("InlineGroup")
 		settings:SetTitle("")
@@ -427,38 +418,20 @@ local methods = {
 -- constructor
 -- ---------------------------------------------------------------------------
 
-local PaneBackdrop = {
-	bgFile = "Interface\\ChatFrame\\ChatFrameBackground",
-	edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-	tile = true, tileSize = 16, edgeSize = 16,
-	insets = { left = 3, right = 3, top = 5, bottom = 3 }
-}
-
+-- The panel is a bare container: it holds the Rules section, which provides
+-- the visible bordered box. No backdrop, border, or title of its own.
 local function Constructor()
 	local frame = CreateFrame("Frame", nil, UIParent)
 	frame:SetFrameStrata("FULLSCREEN_DIALOG")
 
-	local titletext = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-	titletext:SetPoint("TOPLEFT", 14, 0)
-	titletext:SetPoint("TOPRIGHT", -14, 0)
-	titletext:SetJustifyH("LEFT")
-	titletext:SetHeight(18)
-
-	local border = CreateFrame("Frame", nil, frame)
-	border:SetPoint("TOPLEFT", 0, -17)
-	border:SetPoint("BOTTOMRIGHT", -1, 3)
-	border:SetBackdrop(PaneBackdrop)
-	border:SetBackdropColor(0.1, 0.1, 0.1, 0.5)
-	border:SetBackdropBorderColor(0.4, 0.4, 0.4)
-
-	local content = CreateFrame("Frame", nil, border)
-	content:SetPoint("TOPLEFT", 10, -10)
-	content:SetPoint("BOTTOMRIGHT", -10, 10)
+	local content = CreateFrame("Frame", nil, frame)
+	content:SetPoint("TOPLEFT", 0, 0)
+	content:SetPoint("BOTTOMRIGHT", 0, 0)
 
 	local widget = {
 		frame = frame,
 		content = content,
-		titletext = titletext,
+		titletext = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"),
 		type = Type,
 	}
 	for method, func in pairs(methods) do

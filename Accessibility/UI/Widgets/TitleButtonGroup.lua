@@ -53,6 +53,9 @@ local methods = {
 			local button = AceGUI:Create("Button")
 			button:SetText(spec.label)
 			button:SetAutoWidth(true)
+			-- match the title bar height (18) so every title button renders at
+			-- the same size instead of AceGUI's default 24px
+			button:SetHeight(18)
 			button.frame:SetParent(self.frame)
 			button.frame:SetFrameLevel((self.frame:GetFrameLevel() or 1) + 2)
 			button.frame:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -offset, 0)
