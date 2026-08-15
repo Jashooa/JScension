@@ -6,11 +6,18 @@ set -euo pipefail
 SOLUTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SOLUTION_DIR/config.sh"
 
-# Accessibility addon -> Interface/AddOns
-"$SOLUTION_DIR/Accessibility/deploy.sh"
+# --- Accessibility addon -> Interface/AddOns ---
+rm -rf "$ADDON_DEST"
+mkdir -p "$ADDON_DEST"
 
-# Compatibility shim: build into Solution/bin, then install to C:\local
-# (outside the launcher-managed folders, so it survives repairs).
+ADDON_SRC="$SOLUTION_DIR/Accessibility"
+cp "$ADDON_SRC"/*.toc "$ADDON_SRC"/*.lua "$ADDON_SRC"/*.xml "$ADDON_DEST/"
+cp -r "$ADDON_SRC"/Libs "$ADDON_DEST/Libs"
+cp -r "$ADDON_SRC"/Core "$ADDON_SRC"/Game "$ADDON_SRC"/Utils "$ADDON_SRC"/UI "$ADDON_DEST/"
+echo "deployed: $ADDON_DEST"
+
+# --- Compatibility shim: build into Solution/bin, then install to C:\local
+# (outside the launcher-managed folders, so it survives repairs). ---
 ( cd "$SOLUTION_DIR/Compatibility" && ./build.sh )
 mkdir -p "$COMPAT_DEPLOY_DIR"
 install -m 755 "$COMPAT_BIN_DIR/$COMPAT_DLL_NAME" "$COMPAT_BIN_DIR/$COMPAT_EXE_NAME" "$COMPAT_DEPLOY_DIR/"
