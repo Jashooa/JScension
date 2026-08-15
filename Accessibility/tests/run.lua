@@ -205,7 +205,7 @@ ns.addon = { db = { profile = {} } }   -- Accessibility.lua (the entry) is not l
 ns.RotationButton = { ApplyPosition = function() end }   -- Config's button settings call it
 _G.__dialogStatus = {}   -- the AceConfigDialog:GetStatusTable stub returns this
 
-loadModule(ROOT .. "UI/Config.lua", ns)
+loadModule(ROOT .. "Core/Config.lua", ns)
 
 local Compatibility = ns.Compatibility
 local Profile = ns.Profile

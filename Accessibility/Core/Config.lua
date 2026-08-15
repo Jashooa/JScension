@@ -1,17 +1,14 @@
--- The configuration panel.
+-- The configuration options.
 --
--- A declarative AceConfig tree, opened via /acc or the Blizzard options. The
--- left sidebar shows "General", "Rotations" (one plain node per rotation, no
--- icons), and "Button". Selecting a rotation shows its rules in the content
--- area as a card list: each card has the spell icon in its title, ▲/▼ to
--- reorder, and a + toggle that expands the details (spell, unit, conditions).
--- Rules are inline groups, so they never appear in the sidebar tree.
+-- Builds the declarative AceConfig option tree (rotations, button, log) and
+-- registers it with AceConfigRegistry. The rotation rule cards themselves are
+-- rendered by the RotationPanel widget; this file only wires the tree that
+-- contains it. No UI widgets are created here.
 --
--- The panel rebuilds on every structural change through NotifyChange, so the
--- rule and rotation groups are generated from the live profile. Adding a
--- condition type in Conditions.lua needs no work here.
+-- ADDON_NAME comes from the TOC via the ... vararg, the same way
+-- Accessibility.lua receives it; the name is never hardcoded twice.
 
-local _, ns = ...
+local ADDON_NAME, ns = ...
 
 local Config = {}
 
@@ -20,8 +17,6 @@ local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
 
 local Profile = ns.Profile
-
-local APP = "Accessibility"
 
 local function currentProfile()
 	return ns.addon.db.profile
@@ -275,8 +270,8 @@ end
 function Config.Setup()
 	if Config.setupDone then return end
 	Config.setupDone = true
-	AceConfig:RegisterOptionsTable(APP, Config.BuildOptions)
-	AceConfigDialog:AddToBlizOptions(APP, "Accessibility")
+	AceConfig:RegisterOptionsTable(ADDON_NAME, Config.BuildOptions)
+	AceConfigDialog:AddToBlizOptions(ADDON_NAME, "Accessibility")
 
 end
 
@@ -284,18 +279,18 @@ end
 -- dialog status. Called on every Open so it takes effect regardless of when
 -- the status table is created.
 local function ensureRotationsExpanded()
-	local status = AceConfigDialog:GetStatusTable(APP)
+	local status = AceConfigDialog:GetStatusTable(ADDON_NAME)
 	if not status.groups then status.groups = {} end
 	status.groups["rotations"] = true
 end
 
 function Config.Open()
 	ensureRotationsExpanded()
-	AceConfigDialog:Open(APP)
+	AceConfigDialog:Open(ADDON_NAME)
 end
 
 function Config.NotifyOptionsChanged()
-	AceConfigRegistry:NotifyChange(APP)
+	AceConfigRegistry:NotifyChange(ADDON_NAME)
 end
 
 ns.Config = Config
