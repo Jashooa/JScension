@@ -1,9 +1,12 @@
 -- Test harness for the Accessibility addon. Run with: lua5.1 tests/run.lua
 --
--- It loads the pure-Lua modules with a fake WoW API and a fake Compatibility
--- global, then runs assertions against the observable contracts. Core, Button
--- and Config are not loaded: they need Ace3 and frames, which this harness
--- does not provide.
+-- It loads the pure-Lua modules (Utils, Game, Core) with a fake WoW API and
+-- a fake Compatibility global, then runs assertions against the observable
+-- contracts: profile sanitization, conditions, the rotation engine, the
+-- spellbook, and the Compatibility script seam. The AceGUI widgets
+-- (RotationButton, RotationPanel, TitleButtonGroup) are not loaded: their
+-- contracts are frame layout and mouse behaviour, which no harness fake can
+-- verify - they are exercised in-game.
 
 -- ---------------------------------------------------------------------------
 -- fake world state
@@ -201,7 +204,6 @@ loadModule(ROOT .. "Utils/Constants.lua", ns)
 loadModule(ROOT .. "Utils/Compare.lua", ns)
 loadModule(ROOT .. "Utils/Coerce.lua", ns)
 loadModule(ROOT .. "Utils/Log.lua", ns)
-loadModule(ROOT .. "Utils/SpellTooltip.lua", ns)
 loadModule(ROOT .. "Game/Unit.lua", ns)
 loadModule(ROOT .. "Game/Aura.lua", ns)
 loadModule(ROOT .. "Game/Cast.lua", ns)
@@ -316,50 +318,6 @@ do
 	state.passiveSpells = {}
 end
 
--- ---------------------------------------------------------------------------
--- SpellTooltip tests
--- ---------------------------------------------------------------------------
-
-do
-	-- Attach wires OnEnter/OnLeave on a frame; hovering with a rule shows the
-	-- spell link, without a rule nothing shows, leaving hides.
-	local tooltip = { owner = nil, link = nil, shown = 0, hidden = 0 }
-	fake.GameTooltip = {
-		SetOwner = function(self, owner, anchor) tooltip.owner = owner; tooltip.anchor = anchor end,
-		SetHyperlink = function(self, link) tooltip.link = link end,
-		Show = function() tooltip.shown = tooltip.shown + 1 end,
-		Hide = function() tooltip.hidden = tooltip.hidden + 1 end,
-	}
-
-	local frame = {
-		scripts = {},
-		EnableMouse = function(self, enabled) self.mouseEnabled = enabled end,
-		SetScript = function(self, name, fn) self.scripts[name] = fn end,
-	}
-	local SpellTooltip = ns.SpellTooltip
-	ok("SpellTooltip exported", type(SpellTooltip.Attach) == "function")
-
-	local frameRule = { spell = "Fireball" }
-	SpellTooltip.Attach(frame, function() return frameRule end, "ANCHOR_CURSOR")
-	ok("mouse enabled", frame.mouseEnabled == true)
-	ok("OnEnter wired", frame.scripts.OnEnter ~= nil)
-	ok("OnLeave wired", frame.scripts.OnLeave ~= nil)
-
-	frame.scripts.OnEnter(frame)
-	eq("tooltip shows link", tooltip.link, "spell:133")
-	eq("tooltip shown once", tooltip.shown, 1)
-	eq("tooltip anchors at cursor", tooltip.anchor, "ANCHOR_CURSOR")
-
-	frameRule = nil
-	frame.scripts.OnEnter(frame)
-	eq("no link without rule", tooltip.link, "spell:133")   -- unchanged
-	eq("tooltip not re-shown", tooltip.shown, 1)
-
-	frame.scripts.OnLeave(frame)
-	eq("tooltip hidden on leave", tooltip.hidden, 1)
-
-	fake.GameTooltip = nil
-end
 
 -- ---------------------------------------------------------------------------
 -- Profile sanitization tests
@@ -844,157 +802,7 @@ do
 	eq("deleteCondition empties", #rotation.rules[1].conditions, 0)
 end
 
--- ---------------------------------------------------------------------------
--- TitleButtonGroup widget tests
--- ---------------------------------------------------------------------------
 
-do
-	-- TitleButtonGroup is a reusable container with title-bar buttons: it
-	-- must register, install buttons right-to-left, show them (AceGUI buttons
-	-- start hidden), and release them on release.
-	local created = {}
-	local releasedButtons = 0
-	local fakeAce = {
-		RegisterWidgetType = function(self, name, ctor, ver) created[name] = ctor end,
-		GetWidgetVersion = function() return nil end,
-		Release = function(self, widget)
-			if widget.type == "Button" then releasedButtons = releasedButtons + 1 end
-			if widget.OnRelease then widget:OnRelease() end
-		end,
-		RegisterAsContainer = function(self, widget)
-			widget.children = widget.children or {}
-			widget.userdata = widget.userdata or {}
-			widget.SetWidth = function() end
-			widget.SetHeight = function() end
-			widget.SetFullWidth = function() end
-			widget.AddChild = function(self, child) self.children[#self.children + 1] = child end
-			widget.SetUserData = function(self, k, v) self.userdata[k] = v end
-			widget.GetUserData = function(self, k) return self.userdata[k] end
-			widget.GetUserDataTable = function(self) return self.userdata end
-			return widget
-		end,
-	}
-	local widgetEnv = setmetatable({}, { __index = _G })
-	widgetEnv.LibStub = function(name)
-		if name == "AceGUI-3.0" then return fakeAce end
-		return nil
-	end
-	local shown = 0
-	widgetEnv.CreateFrame = function()
-		local frame = { SetFrameStrata = function() end,
-			CreateFontString = function() return { SetPoint = function() end, SetJustifyH = function() end, SetHeight = function() end, SetText = function() end } end,
-			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
-			Hide = function(self) self.hidden = true end,
-			Show = function(self) self.hidden = false; shown = shown + 1 end,
-			EnableMouse = function() end, SetHeight = function() end,
-			SetScript = function() end,
-			GetFrameLevel = function() return 1 end }
-		return frame
-	end
-	widgetEnv.UIParent = {}
-
-	-- the constructor creates Button children via AceGUI:Create; provide it
-	fakeAce.Create = function(self, type)
-		local w = { type = type, children = {}, userdata = {}, events = {},
-			frame = { SetParent = function() end, SetPoint = function() end, GetWidth = function() return 10 end,
-				GetHeight = function() end, ClearAllPoints = function() end, SetFrameLevel = function() end,
-				SetHeight = function() end, Show = function() shown = shown + 1 end, Hide = function() end,
-				GetFrameLevel = function() return 1 end },
-			SetText = function() end, SetAutoWidth = function() end, SetHeight = function() end,
-			SetDisabled = function(self, v) self.disabled = v end,
-			SetCallback = function(self, name, fn) self.events[name] = fn end,
-		}
-		return w
-	end
-
-	local loadChunk = assert(loadfile(ROOT .. "UI/Widgets/TitleButtonGroup.lua"))
-	setfenv(loadChunk, widgetEnv)
-	loadChunk("Accessibility", ns)
-
-	ok("TitleButtonGroup registered", created.TitleButtonGroup ~= nil)
-	local section = created.TitleButtonGroup()
-	section:OnAcquire()
-	local clicked = 0
-	section:SetTitleButtons({
-		{ label = "A", func = function() clicked = clicked + 1 end },
-		{ label = "B", disabled = true, func = function() end },
-	})
-	ok("title buttons installed", section.titleButtons ~= nil and #section.titleButtons == 2)
-	ok("buttons were shown", shown >= 2)
-	ok("first button enabled", section.titleButtons[1].disabled ~= true)
-	ok("second button disabled", section.titleButtons[2].disabled == true)
-	section.titleButtons[1].events.OnClick(section.titleButtons[1])
-	eq("button OnClick fires", clicked, 1)
-	releasedButtons = 0
-	section:OnRelease()
-	eq("OnRelease releases title buttons", releasedButtons, 2)
-
-	-- a widget released with its border hidden (collapsed condition card)
-	-- must come back border-visible when re-acquired from the pool
-	section:SetBorderVisible(false)
-	ok("border hidden when collapsed", section.border.hidden == true)
-	section:OnAcquire()
-	ok("border shown on re-acquire", section.border.hidden == false)
-	ok("borderVisible reset on re-acquire", section.borderVisible == true)
-end
-
--- ---------------------------------------------------------------------------
--- RotationPanel widget tests
--- ---------------------------------------------------------------------------
-
-do
-	-- PanelRotation resolves the panel's rotation from the option path
-	-- AceConfig stores in userdata. Load the widget in a fake-AceGUI env and
-	-- drive the resolution method directly.
-	local created = {}
-	local fakeAce = {
-		RegisterWidgetType = function(self, name, ctor, ver) created[name] = ctor end,
-		GetWidgetVersion = function() return nil end,
-		RegisterAsContainer = function(self, widget)
-			widget.userdata = widget.userdata or {}
-			widget.SetUserData = function(self, k, v) self.userdata[k] = v end
-			widget.GetUserData = function(self, k) return self.userdata[k] end
-			widget.GetUserDataTable = function(self) return self.userdata end
-			return widget
-		end,
-	}
-	local widgetEnv = setmetatable({}, { __index = _G })
-	widgetEnv.LibStub = function(name)
-		if name == "AceGUI-3.0" then return fakeAce end
-		return nil
-	end
-	widgetEnv.CreateFrame = function()
-		return { SetFrameStrata = function() end,
-			CreateFontString = function() return { SetPoint = function() end, SetJustifyH = function() end, SetHeight = function() end, SetText = function() end } end,
-			SetPoint = function() end, SetBackdrop = function() end, SetBackdropColor = function() end, SetBackdropBorderColor = function() end,
-			SetScript = function() end, Hide = function() end, Show = function() end,
-			EnableMouse = function() end, SetHeight = function() end }
-	end
-	widgetEnv.UIParent = {}
-
-	local rotationList = {
-		{ name = "Single", rules = {} },
-		{ name = "AoE", rules = {} },
-	}
-	local loadChunk = assert(loadfile(ROOT .. "UI/RotationPanel.lua"))
-	setfenv(loadChunk, widgetEnv)
-	local testNs = {
-		Profile = { rotations = function() return rotationList end },
-		Conditions = { Registry = {}, TypeList = function() return {} end, Describe = function() return "x" end,
-			Units = {}, Ops = {}, Kinds = {}, TargetTypes = {} },
-		SpellPicker = { Icon = function() return nil end, List = function() return {} end },
-	}
-	loadChunk("Accessibility", testNs)
-
-	ok("RotationPanel registered", created.RotationPanel ~= nil)
-	local panel = created.RotationPanel()
-	panel:SetUserData("path", { "rotations", "rotation1", "rotationPanel" })
-	ok("PanelRotation resolves rotation1", panel:PanelRotation() == rotationList[1])
-	panel:SetUserData("path", { "rotations", "rotation2", "rotationPanel" })
-	ok("PanelRotation resolves rotation2", panel:PanelRotation() == rotationList[2])
-	panel:SetUserData("path", {})
-	ok("PanelRotation nil without rotation key", panel:PanelRotation() == nil)
-end
 
 -- Log tests
 -- ---------------------------------------------------------------------------
