@@ -246,6 +246,9 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		button.frame:SetPoint("TOPRIGHT", card.frame, "TOPRIGHT", -offset, 0)
 		button:SetDisabled(spec.disabled)
 		button:SetCallback("OnClick", spec.func)
+		-- AceGUI buttons start hidden and are only shown by AddChild; these
+		-- are anchored to the card frame instead, so show them explicitly
+		button.frame:Show()
 		titleButtons[#titleButtons + 1] = button
 		offset = offset + (button.frame:GetWidth() or 0) + 2
 	end
