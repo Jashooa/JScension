@@ -246,10 +246,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			panel:NotifyPanelChanged()
 		end },
 	})
--- SpellTooltip.Attach wires the tooltip; the titlebar frame is the hover
--- surface (fontstrings are Regions and cannot reliably receive mouse
--- events).
-SpellTooltip.Attach(card.titlebar, function() return rule end)
+	-- SpellTooltip.Attach wires the tooltip; the titlebar frame is the hover
+	-- surface (fontstrings are Regions and cannot reliably receive mouse
+	-- events).
+	SpellTooltip.Attach(card.titlebar, function() return rule end)
 	container:AddChild(card)
 
 	-- main options
