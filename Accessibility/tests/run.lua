@@ -94,18 +94,22 @@ fake.IsUsableSpell = function(s) local x = state.spells[s]; if x then return x.u
 fake.GetSpellCooldown = function(s) local x = state.spells[s]; if x then return x.cdStart, x.cdDuration end; return 0, 0 end
 fake.IsSpellInRange = function(s) local x = state.spells[s]; if x then return x.inRange end end
 fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
--- GetSpellInfo returns (name, rank, icon, castTimeMs, minRange, maxRange,
--- spellID). The spell table may set castMs to simulate a cast-time spell;
--- 0/nil means instant. A name maps to a stable pseudo-ID so SpellID works.
+-- GetSpellInfo returns (name, rank, icon, powerCost, ...) in this client.
+-- The spell table may set castMs to simulate a cast-time spell (used by the
+-- engine's anti-spam gate, which reads the 4th return).
 fake.GetSpellInfo = function(id)
 	local x = type(id) == "string" and state.spells[id] or nil
 	local castMs = x and x.castMs or 0
-	local spellId = x and x.testId or 0
-	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", castMs, 0, 0, 8921 end
-	if type(id) == "string" then
-		return id, "", "Interface\\Icons\\TEMP", castMs, 0, 0, spellId
-	end
-	return "spell", "", "Interface\\Icons\\TEMP", castMs, 0, 0, id
+	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", castMs end
+	return "spell", "", "Interface\\Icons\\TEMP", castMs
+end
+-- GetSpellLink returns a hyperlink for a name or ID. The spell table may
+-- set testLink to simulate a resolved link; unknown spells return nil.
+fake.GetSpellLink = function(ref)
+	local x = type(ref) == "string" and state.spells[ref] or nil
+	if x and x.testLink then return x.testLink end
+	if type(ref) == "number" then return ("spell:%d"):format(ref) end
+	return nil
 end
 fake.GetNumSpellTabs = function() return state.knownSpells[1] and 1 or 0 end
 fake.GetSpellTabInfo = function() return "General", "", 0, #state.knownSpells end
@@ -298,13 +302,13 @@ do
 	ok("passive spell filtered", not SpellPicker.IsKnown("Blood Frenzy"))
 	ok("unknown spell not listed", not SpellPicker.IsKnown("Nope"))
 
-	-- SpellID resolution: stored ID wins; a name resolves via GetSpellInfo;
+	-- Link resolution: stored ID wins; a name resolves via GetSpellLink;
 	-- no usable spell returns nil
-	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, testId = 133 })
-	eq("SpellID from name", SpellPicker.SpellID({ spell = "Fireball" }), 133)
-	eq("SpellID stored ID wins", SpellPicker.SpellID({ spell = "Fireball", spellID = 999 }), 999)
-	eq("SpellID nil without spell", SpellPicker.SpellID({}), nil)
-	eq("SpellID nil with empty name", SpellPicker.SpellID({ spell = "" }), nil)
+	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, testLink = "spell:133" })
+	eq("Link from name", SpellPicker.Link({ spell = "Fireball" }), "spell:133")
+	eq("Link stored ID wins", SpellPicker.Link({ spell = "Fireball", spellID = 999 }), "spell:999")
+	eq("Link nil without spell", SpellPicker.Link({}), nil)
+	eq("Link nil with empty name", SpellPicker.Link({ spell = "" }), nil)
 
 	-- clean up so rotation tests rebuild the spellbook fresh
 	state.knownSpells = {}

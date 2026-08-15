@@ -46,18 +46,19 @@ local function ruleTitle(rule, index)
 	else
 		label = "Rule " .. index
 	end
-	return ("|T%s:24:24|t %s"):format(ruleIcon(rule), label)
+	return ("|T%s:28:28|t %s"):format(ruleIcon(rule), label)
 end
 
 -- setSpellTooltip wires GameTooltip to a fontstring so hovering it shows the
--- spell's tooltip. The tooltip is only set when the rule has a spell.
+-- spell's tooltip. GetSpellLink returns a usable hyperlink for the name;
+-- this client's GetSpellInfo exposes no spell ID, so no ID is resolved.
 local function setSpellTooltip(fontString, rule)
 	if not fontString.SetScript then return end
 	fontString:SetScript("OnEnter", function(self)
-		local spellId = SpellPicker.SpellID(rule)
-		if not spellId then return end
+		local link = SpellPicker.Link(rule)
+		if not link then return end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetHyperlink(("spell:%d"):format(spellId))
+		GameTooltip:SetHyperlink(link)
 		GameTooltip:Show()
 	end)
 	fontString:SetScript("OnLeave", function()

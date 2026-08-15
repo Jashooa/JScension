@@ -77,13 +77,16 @@ function SpellPicker.Icon(rule)
 	return nil
 end
 
--- SpellID resolves a rule to a numeric spell ID, or nil when the rule has no
--- usable spell. A stored ID wins; a name is resolved through GetSpellInfo,
--- whose 7th return is the ID in this client. Used for tooltips.
-function SpellPicker.SpellID(rule)
-	if rule.spellID and rule.spellID > 0 then return rule.spellID end
+-- Link returns the spell hyperlink for a rule, or nil when the rule has no
+-- usable spell. A stored ID wins; a name resolves through GetSpellLink. This
+-- client's GetSpellInfo exposes no spell ID, so links come from GetSpellLink.
+-- Used for tooltips.
+function SpellPicker.Link(rule)
+	if rule.spellID and rule.spellID > 0 then
+		return select(1, GetSpellLink(rule.spellID))
+	end
 	if rule.spell and rule.spell ~= "" then
-		return select(7, GetSpellInfo(rule.spell))
+		return select(1, GetSpellLink(rule.spell))
 	end
 	return nil
 end

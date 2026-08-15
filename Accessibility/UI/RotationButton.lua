@@ -114,10 +114,10 @@ function RotationButton.Create(saved)
 	-- hovering the button shows the tooltip for the spell it would cast
 	frame:SetScript("OnEnter", function(self)
 		local rule = self.currentRule
-		local spellId = rule and SpellPicker.SpellID(rule)
-		if not spellId then return end
+		local link = rule and SpellPicker.Link(rule)
+		if not link then return end
 		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetHyperlink(("spell:%d"):format(spellId))
+		GameTooltip:SetHyperlink(link)
 		GameTooltip:Show()
 	end)
 	frame:SetScript("OnLeave", function()
