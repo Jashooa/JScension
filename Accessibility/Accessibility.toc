@@ -10,6 +10,7 @@ Utils\Constants.lua
 Utils\Compare.lua
 Utils\Coerce.lua
 Utils\Log.lua
+Utils\SpellTooltip.lua
 
 Game\Unit.lua
 Game\Aura.lua

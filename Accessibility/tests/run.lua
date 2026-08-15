@@ -201,6 +201,7 @@ loadModule(ROOT .. "Utils/Constants.lua", ns)
 loadModule(ROOT .. "Utils/Compare.lua", ns)
 loadModule(ROOT .. "Utils/Coerce.lua", ns)
 loadModule(ROOT .. "Utils/Log.lua", ns)
+loadModule(ROOT .. "Utils/SpellTooltip.lua", ns)
 loadModule(ROOT .. "Game/Unit.lua", ns)
 loadModule(ROOT .. "Game/Aura.lua", ns)
 loadModule(ROOT .. "Game/Cast.lua", ns)
@@ -313,6 +314,51 @@ do
 	-- clean up so rotation tests rebuild the spellbook fresh
 	state.knownSpells = {}
 	state.passiveSpells = {}
+end
+
+-- ---------------------------------------------------------------------------
+-- SpellTooltip tests
+-- ---------------------------------------------------------------------------
+
+do
+	-- Attach wires OnEnter/OnLeave on a frame; hovering with a rule shows the
+	-- spell link, without a rule nothing shows, leaving hides.
+	local tooltip = { owner = nil, link = nil, shown = 0, hidden = 0 }
+	fake.GameTooltip = {
+		SetOwner = function(self, owner, anchor) tooltip.owner = owner; tooltip.anchor = anchor end,
+		SetHyperlink = function(self, link) tooltip.link = link end,
+		Show = function() tooltip.shown = tooltip.shown + 1 end,
+		Hide = function() tooltip.hidden = tooltip.hidden + 1 end,
+	}
+
+	local frame = {
+		scripts = {},
+		EnableMouse = function(self, enabled) self.mouseEnabled = enabled end,
+		SetScript = function(self, name, fn) self.scripts[name] = fn end,
+	}
+	local SpellTooltip = ns.SpellTooltip
+	ok("SpellTooltip exported", type(SpellTooltip.Attach) == "function")
+
+	local frameRule = { spell = "Fireball" }
+	SpellTooltip.Attach(frame, function() return frameRule end, "ANCHOR_CURSOR")
+	ok("mouse enabled", frame.mouseEnabled == true)
+	ok("OnEnter wired", frame.scripts.OnEnter ~= nil)
+	ok("OnLeave wired", frame.scripts.OnLeave ~= nil)
+
+	frame.scripts.OnEnter(frame)
+	eq("tooltip shows link", tooltip.link, "spell:133")
+	eq("tooltip shown once", tooltip.shown, 1)
+	eq("tooltip anchors at cursor", tooltip.anchor, "ANCHOR_CURSOR")
+
+	frameRule = nil
+	frame.scripts.OnEnter(frame)
+	eq("no link without rule", tooltip.link, "spell:133")   -- unchanged
+	eq("tooltip not re-shown", tooltip.shown, 1)
+
+	frame.scripts.OnLeave(frame)
+	eq("tooltip hidden on leave", tooltip.hidden, 1)
+
+	fake.GameTooltip = nil
 end
 
 -- ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ if not AceGUI then return end
 local Profile = ns.Profile
 local Conditions = ns.Conditions
 local SpellPicker = ns.SpellPicker
+local SpellTooltip = ns.SpellTooltip
 
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -47,26 +48,6 @@ local function ruleTitle(rule, index)
 		label = "Rule " .. index
 	end
 	return ("|T%s:32:32|t %s"):format(ruleIcon(rule), label)
-end
-
--- setSpellTooltip wires GameTooltip to a fontstring so hovering it shows the
--- spell's tooltip. GetSpellLink returns a usable hyperlink for the name;
--- this client's GetSpellInfo exposes no spell ID, so no ID is resolved.
--- Fontstrings are not mouse-enabled by default, so OnEnter never fires
--- without EnableMouse.
-local function setSpellTooltip(fontString, rule)
-	if not fontString.SetScript then return end
-	fontString:EnableMouse(true)
-	fontString:SetScript("OnEnter", function(self)
-		local link = SpellPicker.Link(rule)
-		if not link then return end
-		GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-		GameTooltip:SetHyperlink(link)
-		GameTooltip:Show()
-	end)
-	fontString:SetScript("OnLeave", function()
-		GameTooltip:Hide()
-	end)
 end
 
 -- SpellValues returns the { name = name } map for the spell dropdown. The
@@ -265,10 +246,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			panel:NotifyPanelChanged()
 		end },
 	})
-	-- hovering the card title shows the spell tooltip (icon included). The
-	-- titlebar frame is the hover surface (fontstrings are Regions and cannot
-	-- reliably receive mouse events).
-	setSpellTooltip(card.titlebar, rule)
+-- SpellTooltip.Attach wires the tooltip; the titlebar frame is the hover
+-- surface (fontstrings are Regions and cannot reliably receive mouse
+-- events).
+SpellTooltip.Attach(card.titlebar, function() return rule end)
 	container:AddChild(card)
 
 	-- main options

@@ -13,6 +13,7 @@ local Profile = ns.Profile
 local Rotation = ns.Rotation
 local SpellPicker = ns.SpellPicker
 local Constants = ns.Constants
+local SpellTooltip = ns.SpellTooltip
 
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
 local BUTTON_SIZE = 44
@@ -111,18 +112,11 @@ function RotationButton.Create(saved)
 	frame.icon:SetAllPoints(frame)
 	frame.icon:SetTexture(QUESTION_MARK)
 
-	-- hovering the button shows the tooltip for the spell it would cast
-	frame:SetScript("OnEnter", function(self)
-		local rule = self.currentRule
-		local link = rule and SpellPicker.Link(rule)
-		if not link then return end
-		GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-		GameTooltip:SetHyperlink(link)
-		GameTooltip:Show()
-	end)
-	frame:SetScript("OnLeave", function()
-		GameTooltip:Hide()
-	end)
+	-- hovering the button shows the tooltip for the spell it would cast;
+	-- currentRule is refreshed on every Refresh
+	SpellTooltip.Attach(frame, function(self)
+		return self.currentRule
+	end, "ANCHOR_RIGHT")
 
 	-- auto toggle: a small "A" button pinned to the cast button's top-right
 	autoButton = CreateFrame("Button", nil, frame)
