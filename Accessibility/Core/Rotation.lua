@@ -19,6 +19,9 @@ local Spell = ns.Spell
 local Unit = ns.Unit
 local Constants = ns.Constants
 local Log = ns.Log
+assert(Compatibility and Conditions and SpellPicker and Profile and Cooldown
+	and Cast and Spell and Unit and Constants and Log,
+	"load order: Core/Rotation before its dependencies")
 
 -- A no-cooldown spell must wait this long before it can cast again. The
 -- global cooldown spaces on-GCD spells; this window spaces off-GCD instant

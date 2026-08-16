@@ -49,6 +49,7 @@ local asBool = ns.Coerce.asBool
 local asString = ns.Coerce.asString
 local asNumber = ns.Coerce.asNumber
 local Constants = ns.Constants
+assert(asBool and asString and asNumber and Constants, "load order: Core/Profile before Coerce/Constants")
 
 -- ---------------------------------------------------------------------------
 -- rule sanitization

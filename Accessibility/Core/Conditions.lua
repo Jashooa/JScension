@@ -28,6 +28,8 @@ local Unit = ns.Unit
 local Aura = ns.Aura
 local Cooldown = ns.Cooldown
 local Spell = ns.Spell
+assert(Constants and Compare and Unit and Aura and Cooldown and Spell,
+	"load order: Core/Conditions before its dependencies")
 
 -- SNIPPET_MAX truncates long Lua snippets in the editor display.
 local SNIPPET_MAX = 40

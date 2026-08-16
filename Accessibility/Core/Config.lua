@@ -18,6 +18,7 @@ local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
 
 local Profile = ns.Profile
 local Constants = ns.Constants
+assert(Profile and Constants, "load order: Core/Config before Profile/Constants")
 
 local function currentProfile()
 	return ns.addon.db.profile

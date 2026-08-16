@@ -26,6 +26,8 @@ local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
 local ContentInset = ns.ContentInset
 local Config = ns.Config
+assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config,
+	"load order: UI/RotationPanel before its dependencies")
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 

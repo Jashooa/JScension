@@ -14,6 +14,8 @@ local Rotation = ns.Rotation
 local SpellPicker = ns.SpellPicker
 local Cooldown = ns.Cooldown
 local SpellTooltip = ns.SpellTooltip
+assert(Profile and Rotation and SpellPicker and Cooldown and SpellTooltip,
+	"load order: UI/RotationButton before its dependencies")
 
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
 local BUTTON_SIZE = 44

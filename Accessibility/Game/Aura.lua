@@ -16,6 +16,7 @@ local _, ns = ...
 
 local Constants = ns.Constants
 local Spell = ns.Spell
+assert(Constants and Spell, "load order: Game/Aura before Constants/Spell")
 
 local Aura = {}
 

@@ -9,6 +9,7 @@
 local _, ns = ...
 
 local Constants = ns.Constants
+assert(Constants, "load order: Game/Cast before Constants")
 -- Profile is not captured: Core/Profile.lua loads after Game/, so it is
 -- looked up at call time via ns.Profile.
 

@@ -19,6 +19,7 @@ local Type, Version = "TitleButtonGroup", 1
 local AceGUI = LibStub("AceGUI-3.0", true)
 if not AceGUI or (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 local ContentInset = ns.ContentInset
+assert(ContentInset, "load order: TitleButtonGroup before ContentInset")
 
 local BUTTON_GAP = 2
 local TITLE_RIGHT_INSET = 14

@@ -10,6 +10,7 @@ local _, ns = ...
 
 local Constants = ns.Constants
 local Spell = ns.Spell
+assert(Constants and Spell, "load order: Game/Cooldown before Constants/Spell")
 
 local Cooldown = {}
 
