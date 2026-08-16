@@ -656,8 +656,16 @@ do
 	eq("stripRank single rank", Spell.stripRank("Fireball (Rank 2)"), "Fireball")
 	eq("stripRank multi rank", Spell.stripRank("Fireball (Ranks 2-3)"), "Fireball")
 	eq("stripRank leaves plain name", Spell.stripRank("Fireball"), "Fireball")
-end
 
+	-- Spell.id: nil when the C_Spell API is absent (the guard), then a
+	-- working resolve once the backported API is faked.
+	eq("Spell.id nil without C_Spell", Spell.id("Fireball"), nil)
+	fake.C_Spell = { GetSpellID = function(_, name) if name == "Fireball" then return 680282 end return nil end }
+	eq("Spell.id resolves a known name", Spell.id("Fireball"), 680282)
+	eq("Spell.id nil for an unknown name", Spell.id("Nope"), nil)
+	eq("Spell.id nil for an empty name", Spell.id(""), nil)
+	fake.C_Spell = nil
+end
 -- ---------------------------------------------------------------------------
 -- Cooldown helper tests
 -- ---------------------------------------------------------------------------

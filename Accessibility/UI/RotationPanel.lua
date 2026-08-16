@@ -26,7 +26,8 @@ local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
 local ContentInset = ns.ContentInset
 local Config = ns.Config
-assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config,
+local Spell = ns.Spell
+assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and Spell,
 	"load order: UI/RotationPanel before its dependencies")
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -269,6 +270,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	spellDropdown:SetValue(rule.spell or "")
 	spellDropdown:SetCallback("OnValueChanged", function(_, _, value)
 		rule.spell = value
+		-- resolve the ID silently so the user never types it; a non-book
+		-- spell resolves to nil and leaves the field blank for manual entry
+		rule.spellID = Spell.id(value)
+		spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
 		panel:NotifyPanelChanged()
 	end)
 	card:AddChild(spellDropdown)

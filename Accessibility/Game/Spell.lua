@@ -33,6 +33,20 @@ function Spell.name(ref)
 	return select(1, GetSpellInfo(ref))
 end
 
+-- id resolves a spell name to its numeric ID via the backported C_Spell API,
+-- or returns nil when the name does not resolve or the API is absent. It is
+-- used to auto-fill the editor's spell-ID field; the engine still casts by
+-- name, so a nil result is not an error.
+function Spell.id(name)
+	if not name or name == "" then return nil end
+	if type(C_Spell) ~= "table" or type(C_Spell.GetSpellID) ~= "function" then
+		return nil
+	end
+	local ok, result = pcall(C_Spell.GetSpellID, C_Spell, name)
+	if ok and type(result) == "number" and result > 0 then return result end
+	return nil
+end
+
 -- cooldown returns (start, duration) for a spell.
 function Spell.cooldown(ref)
 	local start, duration = GetSpellCooldown(ref)
