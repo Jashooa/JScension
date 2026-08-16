@@ -14,6 +14,15 @@ local _, ns = ...
 
 local Spell = {}
 
+-- stripRank removes a trailing "(Rank N)" / "(Ranks N-M)" suffix. The client
+-- reports ranked auras and cast-bar names with the suffix; stored spell names
+-- are plain, so both sides are normalized before comparison.
+function Spell.stripRank(s)
+	s = s:gsub("%s%((Rank)%s?%d+%-?%d*%)$", "")
+	s = s:gsub("%s%((Ranks)%s?%d+%-?%d+%)$", "")
+	return s
+end
+
 -- castTime returns a spell's cast time in ms, or 0 when instant.
 function Spell.castTime(ref)
 	return select(7, GetSpellInfo(ref)) or 0
@@ -38,6 +47,16 @@ end
 -- inRange returns true when the spell is in range of the unit.
 function Spell.inRange(ref, unit)
 	return IsSpellInRange(ref, unit) == 1
+end
+
+-- verifyShape probes a known spell and returns false when the documented
+-- GetSpellInfo return order does not hold (a client rebuild shifted it). A
+-- nil probe (no known spell yet) returns true: nothing to check.
+function Spell.verifyShape()
+	local probe = ns.SpellPicker and ns.SpellPicker.List()[1] or nil
+	if not probe then return true end
+	local name, _, _, _, _, _, castingTime = GetSpellInfo(probe)
+	return type(name) == "string" and type(castingTime) == "number"
 end
 
 ns.Spell = Spell

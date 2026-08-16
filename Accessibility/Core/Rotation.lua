@@ -103,9 +103,10 @@ local function RulePasses(rule)
 	-- currently being cast or channelled (that is a queue, not spam).
 	local ref = spellReference(rule)
 	local castMs = Spell.castTime(ref)
-	local currentCast = Cast.currentCast()
-	local refName = (type(ref) == "number") and Spell.name(ref) or ref
-	if not (castMs and castMs > 0) and currentCast ~= refName then
+	local castName = Cast.currentCast()
+	if castName then castName = Spell.stripRank(castName) end
+	local refName = (type(ref) == "number") and Spell.name(ref) or Spell.stripRank(ref)
+	if not (castMs and castMs > 0) and castName ~= refName then
 		local t = lastCastAt[rule.spell]
 		if t and (GetTime() - t) < ANTI_SPAM_WINDOW then return false end
 	end
