@@ -59,7 +59,7 @@ local function RulePasses(rule)
 	local unit = rule.unit or "target"
 
 	-- gate 2: the target unit must exist and be alive (skip for self-cast)
-	if unit ~= "player" and not Unit.unitOK(unit) then
+	if unit ~= "player" and not Unit.isAlive(unit) then
 		return false
 	end
 
@@ -137,7 +137,7 @@ end
 -- "no passing rule") so the caller can log it without re-deriving the checks.
 function Rotation.NextRule()
 	local profile = Profile.current()
-	if UnitIsDeadOrGhost("player") then return nil, "player dead" end
+	if Unit.isDeadOrGhost("player") then return nil, "player dead" end
 	if not Compatibility.IsCompatible() then return nil, "not compatible" end
 
 	local rules = Profile.activeRules()
@@ -175,7 +175,8 @@ function Rotation.CastBest()
 		return false
 	end
 	Emit(rule)
-	Log.Write("cast", ("cast %s (rule %s)"):format(rule.spell, tostring(rule.name)))
+	local label = (rule.name and rule.name ~= "") and rule.name or rule.spell
+	Log.Write("cast", ("cast %s (rule %s)"):format(rule.spell, label))
 	return true
 end
 

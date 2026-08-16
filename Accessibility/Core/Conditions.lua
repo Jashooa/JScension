@@ -61,13 +61,13 @@ register("target_type", {
 		local unit = condition.unit or "target"
 		local want = condition.value or "enemy"
 		if want == "any" then
-			return Unit.unitOK(unit)
+			return Unit.isAlive(unit)
 		elseif want == "player" then
 			return unit == "player"
 		elseif want == "enemy" then
-			return Unit.unitOK(unit) and Unit.canAttack(unit)
+			return Unit.isAlive(unit) and Unit.canAttack(unit)
 		elseif want == "friendly" then
-			return Unit.unitOK(unit) and not Unit.canAttack(unit)
+			return Unit.isAlive(unit) and not Unit.canAttack(unit)
 		end
 		return false
 	end,
@@ -81,7 +81,7 @@ register("health_percent", {
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "target"
-		if not Unit.unitOK(unit) then return false end
+		if not Unit.isAlive(unit) then return false end
 		return Compare.compare(Unit.healthPercent(unit), condition.op or "<", tonumber(condition.value) or 0)
 	end,
 })
@@ -94,7 +94,7 @@ register("power_percent", {
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "player"
-		if not Unit.unitOK(unit) then return false end
+		if not Unit.isAlive(unit) then return false end
 		return Compare.compare(Unit.powerPercent(unit), condition.op or ">", tonumber(condition.value) or 0)
 	end,
 })
@@ -201,7 +201,7 @@ register("unit_exists", {
 		return ("%s exists"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		return Unit.unitOK(condition.unit or "target")
+		return Unit.isAlive(condition.unit or "target")
 	end,
 })
 
@@ -213,7 +213,7 @@ register("unit_hostile", {
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "target"
-		return Unit.unitOK(unit) and Unit.canAttack(unit)
+		return Unit.isAlive(unit) and Unit.canAttack(unit)
 	end,
 })
 

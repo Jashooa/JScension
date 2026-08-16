@@ -7,9 +7,14 @@ local _, ns = ...
 
 local Unit = {}
 
--- unitOK returns true when the unit exists and is alive.
-function Unit.unitOK(unit)
+-- isAlive returns true when the unit exists and is not dead or a ghost.
+function Unit.isAlive(unit)
 	return unit and UnitExists(unit) and not UnitIsDeadOrGhost(unit)
+end
+
+-- isDeadOrGhost returns true when the unit is dead or a ghost.
+function Unit.isDeadOrGhost(unit)
+	return UnitIsDeadOrGhost(unit) and true or false
 end
 
 -- exists returns true when the unit exists.
