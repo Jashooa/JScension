@@ -19,11 +19,9 @@ local Cast = {}
 -- or nil when idle. It is the single owner of the UnitCastingInfo/
 -- UnitChannelInfo return positions (name = 1st, endTime = 6th).
 function Cast.currentCast()
-	local name = select(1, UnitCastingInfo("player"))
-	local endMs = select(6, UnitCastingInfo("player"))
+	local name, _, _, _, _, endMs = UnitCastingInfo("player")
 	if not name then
-		name = select(1, UnitChannelInfo("player"))
-		endMs = select(6, UnitChannelInfo("player"))
+		name, _, _, _, _, endMs = UnitChannelInfo("player")
 	end
 	if not name then return nil end
 	return name, endMs

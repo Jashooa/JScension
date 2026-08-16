@@ -31,7 +31,7 @@ function Slash.Install(addon)
 		elseif input == "simulate" or input == "sim" then
 			local lines = Rotation.Simulate()
 			for _, line in ipairs(lines) do self:Print(line) end
-		elseif input == "log" or input == "log 50" then
+		elseif input == "log" or input:match("^log%s+%d+$") then
 			-- print the recent debug log to chat (default 50 lines)
 			local n = tonumber((input):match("^log%s+(%d+)$")) or 50
 			local lines = Log.Dump(n)

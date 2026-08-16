@@ -232,7 +232,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			Profile.moveRule(rotation, ruleIndex, ruleIndex + 1)
 			panel:NotifyPanelChanged()
 		end },
-		{ label = "Delete", disabled = false, func = function()
+		{ label = "Delete", func = function()
 			Profile.deleteRule(rotation, ruleIndex)
 			panel:NotifyPanelChanged()
 		end },
@@ -311,7 +311,6 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	return card
 end
-
 
 -- ---------------------------------------------------------------------------
 -- the panel widget

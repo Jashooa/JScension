@@ -186,7 +186,7 @@ register("cooldown_remaining", {
 		local start, duration = Spell.cooldown(condition.spell)
 		if not start then return false end
 		local remaining = 0
-		if start > 0 and duration and duration > Constants.GCD_DURATION then
+		if Cooldown.isOwnCooldown(start, duration) then
 			remaining = (start + duration) - GetTime()
 			if remaining < 0 then remaining = 0 end
 		end
