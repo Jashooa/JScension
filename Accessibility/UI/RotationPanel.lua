@@ -59,7 +59,7 @@ end
 -- spell is added so a stale value still renders.
 local function spellValues(rule)
 	local list = SpellPicker.List()
-	local values = { [""] = "-- none --" }
+	local values = { [""] = "" }
 	for i = 1, #list do
 		values[list[i]] = list[i]
 	end
