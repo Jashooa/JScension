@@ -79,6 +79,12 @@
 #include <string.h>
 #include "common.h"
 
+/* The three globals the pcall wrapper stashes results in. push_result reads
+ * them back; the Lua wrapper strings write them. Declared once so the reader
+ * and writer spellings cannot drift. */
+#define RESULT_OK_GLOBAL   "Compatibility_Ok"
+#define RESULT_VAL_GLOBAL  "Compatibility_Val"
+#define RESULT_ERR_GLOBAL  "Compatibility_Err"
 
 /* ------------------------------------------------------------------ *
  * Game addresses. Stable because Ascension.exe has NO ASLR.
@@ -426,10 +432,10 @@ static const char* choose_owner(void) {
  * Compatibility_body to push back. This wrapper itself can never throw (only
  * assignments + loadstring + pcall), so FUN_00819210 never sees an error. */
 static const char WRAP_PRE[]  = "local f,e=loadstring(\"";
-static const char WRAP_POST[] = "\");local ok,val,err;if f then ok,val,err=pcall(f);if ok then err=nil else err=val;val=nil end else ok=false;err=e end;Compatibility_Ok=ok;Compatibility_Err=err;Compatibility_Val=val";
-static const char FAIL_NOSCRIPT[] = "Compatibility_Ok=false;Compatibility_Err=\"Compatibility: no script argument\";Compatibility_Val=nil";
-static const char FAIL_NUL[]      = "Compatibility_Ok=false;Compatibility_Err=\"Compatibility: script contains a NUL byte\";Compatibility_Val=nil";
-static const char FAIL_ALLOC[]    = "Compatibility_Ok=false;Compatibility_Err=\"Compatibility: out of memory\";Compatibility_Val=nil";
+static const char WRAP_POST[] = "\");local ok,val,err;if f then ok,val,err=pcall(f);if ok then err=nil else err=val;val=nil end else ok=false;err=e end;" RESULT_OK_GLOBAL "=ok;" RESULT_ERR_GLOBAL "=err;" RESULT_VAL_GLOBAL "=val";
+static const char FAIL_NOSCRIPT[] = RESULT_OK_GLOBAL "=false;" RESULT_ERR_GLOBAL "=\"Compatibility: no script argument\";" RESULT_VAL_GLOBAL "=nil";
+static const char FAIL_NUL[]      = RESULT_OK_GLOBAL "=false;" RESULT_ERR_GLOBAL "=\"Compatibility: script contains a NUL byte\";" RESULT_VAL_GLOBAL "=nil";
+static const char FAIL_ALLOC[]    = RESULT_OK_GLOBAL "=false;" RESULT_ERR_GLOBAL "=\"Compatibility: out of memory\";" RESULT_VAL_GLOBAL "=nil";
 
 /* Escape arbitrary script bytes into a Lua string literal: backslash and
  * double-quote are backslash-escaped, \n \r \t become escapes, and every
@@ -476,9 +482,9 @@ static char* escape_literal(const char* s, unsigned int len) {
  * game's wrapper copies all three. */
 static void push_result(unsigned int state) {
     GetField_t gf = (GetField_t)LUA_GETFIELD;
-    gf(state, LUA_GLOBALSINDEX, "Compatibility_Ok");
-    gf(state, LUA_GLOBALSINDEX, "Compatibility_Val");
-    gf(state, LUA_GLOBALSINDEX, "Compatibility_Err");
+    gf(state, LUA_GLOBALSINDEX, RESULT_OK_GLOBAL);
+    gf(state, LUA_GLOBALSINDEX, RESULT_VAL_GLOBAL);
+    gf(state, LUA_GLOBALSINDEX, RESULT_ERR_GLOBAL);
 }
 
 /* The real implementation behind Compatibility_cb (see the naked stub below for
@@ -587,14 +593,14 @@ static int run_registration(void) {
     reg("Compatibility", (void*)Compatibility_cb);
     g_registered = 1;
     logmsg("compatibility: Compatibility registered");
-    exec("local ok,err=pcall(Compatibility,'-- compatibility self-test');Compatibility_Ok=ok;Compatibility_Err=err;Compatibility_Val=nil",
+    exec("local ok,err=pcall(Compatibility,'-- compatibility self-test');" RESULT_OK_GLOBAL "=ok;" RESULT_ERR_GLOBAL "=err;" RESULT_VAL_GLOBAL "=nil",
          g_owner_name, g_owner_name);
     fs = *(volatile unsigned long*)FS_STATE;
     if (fs) {
         GetField_t gf = (GetField_t)LUA_GETFIELD;
         ToBool_t tb = (ToBool_t)LUA_TOBOOLEAN;
         Remove_t rm = (Remove_t)LUA_REMOVE;
-        gf(fs, LUA_GLOBALSINDEX, "Compatibility_Ok");
+        gf(fs, LUA_GLOBALSINDEX, RESULT_OK_GLOBAL);
         logmsgf("compatibility: self-test ok=%d", tb(fs, -1));
         rm(fs, -1);
     }
