@@ -32,6 +32,10 @@ local Spell = ns.Spell
 -- SNIPPET_MAX truncates long Lua snippets in the editor display.
 local SNIPPET_MAX = 40
 
+-- The derived fields the "lua" condition stores on its own table (compile
+-- cache). copyRule strips these so a compiled function never reaches the
+-- SavedVariables file. Declared here so the copy consults one list.
+Conditions.CacheKeys = { _compiled = true, _compiledFor = true, _error = true }
 local Registry = {}
 local order = {}
 

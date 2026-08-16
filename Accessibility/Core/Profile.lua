@@ -235,8 +235,11 @@ end
 local RULE_FIELDS = { "name", "spell", "spellID", "enabled", "unit" }
 
 -- copyRule deep-copies one rule (conditions included), stripping the derived
--- compile cache the "lua" condition type stores on its table.
+-- compile cache the "lua" condition type stores on its table. The cache keys
+-- are declared in Conditions.CacheKeys (resolved at call time: Conditions
+-- loads after Profile).
 local function copyRule(rule)
+	local cacheKeys = ns.Conditions and ns.Conditions.CacheKeys or {}
 	local copy = { conditions = {} }
 	for i = 1, #RULE_FIELDS do
 		copy[RULE_FIELDS[i]] = rule[RULE_FIELDS[i]]
@@ -245,7 +248,7 @@ local function copyRule(rule)
 		local src = rule.conditions[i]
 		local condition = {}
 		for k, v in pairs(src) do
-			if k ~= "_compiled" and k ~= "_compiledFor" and k ~= "_error" then
+			if not cacheKeys[k] then
 				condition[k] = v
 			end
 		end
