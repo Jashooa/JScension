@@ -105,7 +105,7 @@
 
 #define LUA_GLOBALSINDEX (-10002)
 #define LUA_TNIL         0
-#define LUA_TFUNCTION    6
+#define LUA_TFUNCTION    6    /* stock Lua 5.1 LUA_TFUNCTION enum; verify against the client's lua_type return */
 
 /* Log path is derived from the DLL's own location at load - see init_logpath. */
 #define WM_COMPATIBILITY        (WM_APP + 1)   /* posted to the game window by SetupThread */

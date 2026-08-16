@@ -64,10 +64,6 @@ fake.LibStub = function(name)
 	end
 	return nil
 end
-fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
-fake.GetNumSpellTabs = function() return 0 end
-fake.GetSpellTabInfo = function() return "General", "", 0, 0 end
-fake.GetSpellName = function() return nil end
 
 local function clearScripts()
 	for i = #scripts, 1, -1 do scripts[i] = nil end
@@ -309,6 +305,9 @@ do
 	ok("castable spell listed 2", SpellPicker.IsKnown("Heroic Strike"))
 	ok("passive spell filtered", not SpellPicker.IsKnown("Blood Frenzy"))
 	ok("unknown spell not listed", not SpellPicker.IsKnown("Nope"))
+
+	-- verifyShape: a known spell with the documented shape passes
+	ok("verifyShape true on a known spell", ns.Spell.verifyShape() == true)
 
 	-- Link resolution: stored ID wins; a name resolves via GetSpellLink;
 	-- no usable spell returns nil
@@ -649,6 +648,17 @@ ok("aura missing resolves by name", Conditions.Eval({ type = "aura_missing", uni
 state.auras.target = { { kind = "debuff", name = "Moonfire (Rank 2)", count = 1, remaining = 10, mine = true } }
 ok("aura field accepts spell ID", Conditions.Eval({ type = "aura_missing", unit = "target", aura = 8921, kind = "debuff" }) == false)
 -- ---------------------------------------------------------------------------
+-- Spell.stripRank tests
+-- ---------------------------------------------------------------------------
+
+do
+	local Spell = ns.Spell
+	eq("stripRank single rank", Spell.stripRank("Fireball (Rank 2)"), "Fireball")
+	eq("stripRank multi rank", Spell.stripRank("Fireball (Ranks 2-3)"), "Fireball")
+	eq("stripRank leaves plain name", Spell.stripRank("Fireball"), "Fireball")
+end
+
+-- ---------------------------------------------------------------------------
 -- Cooldown helper tests
 -- ---------------------------------------------------------------------------
 
@@ -836,8 +846,7 @@ do
 	eq("deleteCondition empties", #rotation.rules[1].conditions, 0)
 end
 
-
-
+-- ---------------------------------------------------------------------------
 -- Log tests
 -- ---------------------------------------------------------------------------
 

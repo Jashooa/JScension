@@ -56,11 +56,15 @@ end
 -- events
 -- ---------------------------------------------------------------------------
 
--- OnPlayerLogin re-probes the trust gate and refreshes the spellbook. It runs
--- after the shim re-registers, so a late-attached shim is picked up here.
+-- OnPlayerLogin re-probes the trust gate, refreshes the spellbook, and checks
+-- the spell-API return order (a client rebuild can shift it). It runs after
+-- the shim re-registers, so a late-attached shim is picked up here.
 function A:OnPlayerLogin()
 	Compatibility.Recheck()
 	SpellPicker.Refresh()
+	if not ns.Spell.verifyShape() then
+		self:Print("|cffff4444Accessibility: spell API return order changed - verify GetSpellInfo|r")
+	end
 end
 
 -- OnActionBlocked is a canary. A protected call from addon code must never
