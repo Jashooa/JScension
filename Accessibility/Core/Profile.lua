@@ -14,15 +14,19 @@ local _, ns = ...
 
 local Profile = {}
 
+-- The fallback rotation name: defaults, legacy migration, empty-list repair,
+-- and the un-sanitized fallback all use it.
+local DEFAULT_ROTATION_NAME = "Default"
+
 Profile.defaults = {
 	profile = {
 		auto = false,
 		pulseInterval = 0.1,
 		gcdProbeSpell = "",
 		queueWindow = 0.4,   -- seconds; 0 disables early-queueing
-		active = "Default",
+		active = DEFAULT_ROTATION_NAME,
 		rotations = {
-			{ name = "Default", rules = {} },
+			{ name = DEFAULT_ROTATION_NAME, rules = {} },
 		},
 		button = {
 			enabled = true,   -- false hides the cast button
@@ -122,12 +126,11 @@ function Profile.sanitizeProfile(p)
 	p.gcdProbeSpell = asString(p.gcdProbeSpell, "")
 	-- queue window: 0 (off) .. 1.0s, matching the client CVar's practical range
 	p.queueWindow = math.max(0, math.min(1.0, asNumber(p.queueWindow, 0.4)))
-
 	-- migrate the old flat rules array into one "Default" rotation
 	local srcRotations = p.rotations
 	if type(srcRotations) ~= "table" then
 		local legacy = type(p.rules) == "table" and p.rules or {}
-		srcRotations = { { name = "Default", rules = legacy } }
+		srcRotations = { { name = DEFAULT_ROTATION_NAME, rules = legacy } }
 	end
 	p.rules = nil
 
@@ -147,7 +150,7 @@ function Profile.sanitizeProfile(p)
 		clean[#clean + 1] = rotation
 	end
 	if #clean == 0 then
-		clean[1] = { name = "Default", rules = {} }
+		clean[1] = { name = DEFAULT_ROTATION_NAME, rules = {} }
 	end
 	p.rotations = clean
 
@@ -181,8 +184,8 @@ end
 function Profile.rotations()
 	local p = Profile.current()
 	if type(p.rotations) ~= "table" then
-		p.rotations = { { name = "Default", rules = {} } }
-		p.active = p.active or "Default"
+		p.rotations = { { name = DEFAULT_ROTATION_NAME, rules = {} } }
+		p.active = p.active or DEFAULT_ROTATION_NAME
 	end
 	return p.rotations
 end
