@@ -285,7 +285,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	spellIdInput:SetLabel("Spell ID (optional)")
 	spellIdInput:SetRelativeWidth(0.5)
 	spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
-	spellIdInput:SetCallback("OnTextChanged", function(_, _, value)
+	spellIdInput:SetCallback("OnEnterPressed", function(_, _, value)
 		if syncing then return end
 		syncing = true
 		rule.spellID = tonumber(value)
