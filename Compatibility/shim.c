@@ -10,9 +10,7 @@
  *   "Blizzard_*" name, then any trusted name; a manifest with no trusted name fails cleanly
  *   instead of silently blocking. Frames created inside a Compatibility script
  *   inherit the trusted owner, so the addon's handlers cast directly for
- *   the rest of the session. Personal accessibility use; see the §8 series
- *   in ../research/ascension-client-analysis.md (outside this repo) for the
- *   full RE background.
+ *   the rest of the session. Personal accessibility use.
  *
  * MECHANISM (why this shape)
  *   DllMain spawns SetupThread -> finds the game window (GxWindowClassD3d),
@@ -51,7 +49,7 @@
  *   (min args / flag / max args, consumed by FUN_00855de0), and
  *   FUN_0086b5a0 validates the callback pointer against loaded-module
  *   executable memory. A hand-written blob or anonymous copy carries wrong
- *   descriptor bytes and crashes the arg machinery (v5-v7, see §8l).
+ *   descriptor bytes and crashes the arg machinery (v5-v7).
  *   A plain -O2 function's bytes at +0x4d..0x4f are compiler accidents, so
  *   Compatibility_cb is a NAKED STUB that pins them: dead bytes at +0x4d..0x4f
  *   read flag=0x01 (the FUN_00855de0 vararg path - identical to the
@@ -116,7 +114,7 @@
 #define EXT_END              0x7a080000 /* Extensions.dll live range end */
 
 /* Client layout snapshots, 16 bytes each, taken from the current
- * ascension-live/Ascension.exe (see §8m). Rebuild when the client updates. */
+ * ascension-live/Ascension.exe. Rebuild when the client updates. */
 static const unsigned char EXP_REGISTER[16]   = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x35,0x8c,0xf7,0xd3,0x00,0x6a,0x00,0x50};
 static const unsigned char EXP_READ_STR[16]   = {0x55,0x8b,0xec,0x56,0x8b,0x75,0x08,0x57,0x8b,0x7d,0x0c,0x8b,0xc7,0x8b,0xce,0xe8};
 static const unsigned char EXP_GETFIELD[16]   = {0x55,0x8b,0xec,0x83,0xec,0x10,0x8b,0x45,0x0c,0x53,0x56,0x8b,0x75,0x08,0x57,0x8b};
@@ -361,7 +359,7 @@ static int validate_layout(void) {
  * "Blizzard_*" (the always-loaded set), then any trusted name. Rationale:
  * the owner must be an addon the server believes is legitimately RUNNING on
  * this account/server - a disabled or mode-specific addon would be a
- * trivially-checkable lie (see §8n in the analysis doc). Every read is
+ * trivially-checkable lie. Every read is
  * bounded (entry count cap, IsBadReadPtr/IsBadStringPtrA, name length cap).
  * Failure -> "" : a manifest that dropped every trusted entry (or a changed
  * layout) becomes a LOUD clean failure - no registration, the addon's
