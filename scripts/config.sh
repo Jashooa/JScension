@@ -10,9 +10,9 @@
 #   - Compatibility artifacts go to C:\local, which the launcher does not
 #     manage and therefore never deletes.
 
-# Solution root (this folder). Each sourcing script may set it already;
-# recomputing from this file's location is always correct.
-SOLUTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Solution root (parent of this scripts/ folder). Each sourcing script may set
+# it already; recomputing from this file's location is always correct.
+SOLUTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Wine prefix containing the game installation.
 PREFIX="/mnt/games/Faugus/ascension-test/pfx"
@@ -29,7 +29,7 @@ ADDON_DEST="$GAME_DIR/Interface/AddOns/Accessibility"
 # not for the value's folder name.
 COMPAT_DEPLOY_DIR="$PREFIX/drive_c/local"
 
-# File names produced by Compatibility/build.sh.
+# File names produced by scripts/build.sh.
 COMPAT_DLL_NAME="compatibility.dll"
 COMPAT_EXE_NAME="compatibility.exe"
 

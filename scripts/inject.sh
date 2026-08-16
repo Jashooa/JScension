@@ -4,8 +4,8 @@
 # COMPATIBILITY_RUN=1 self-test in chat.
 set -euo pipefail
 
-SOLUTION_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SOLUTION_DIR/config.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
 
 # Wine maps "$PREFIX/drive_c" to C:. Convert the Compatibility deploy folder
 # to its Windows form and append the injector file name.

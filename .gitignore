@@ -1,5 +1,5 @@
 # Build output: the Compatibility shim + injector binaries.
-# Rebuilt by Compatibility/build.sh, deployed by Compatibility/deploy.sh.
+# Rebuilt by scripts/build.sh, deployed by scripts/deploy.sh.
 bin/
 
 # Editor/OS noise.

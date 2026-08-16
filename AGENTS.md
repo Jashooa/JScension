@@ -25,12 +25,14 @@ injected shim that lets it cast protected spells. This repo is the
 - **`tests/run.lua`** — pure-Lua test suite (`lua5.1 tests/run.lua`); it
   fakes the WoW API and exercises the engine without frames.
 
-## Root scripts
+## Scripts
 
-- `deploy.sh` — build the shim into `bin/`, deploy the addon to the game's
+- `scripts/build.sh` — build the shim into `bin/`.
+- `scripts/deploy.sh` — build the shim, deploy the addon to the game's
   `Interface/AddOns/`, install the shim to `C:\local`.
-- `inject.sh` — inject the shim into the running game (after every restart).
-- `config.sh` — shared paths (prefix, game dir, wine, file names).
+- `scripts/inject.sh` — inject the shim into the running game (after every
+  restart).
+- `scripts/config.sh` — shared paths (prefix, game dir, wine, file names).
 
 ## Notes
 
