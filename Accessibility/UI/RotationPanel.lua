@@ -26,7 +26,8 @@ local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
 local ContentInset = ns.ContentInset
 local Config = ns.Config
-assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config,
+local TextInput = ns.TextInput
+assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and TextInput,
 	"load order: UI/RotationPanel before its dependencies")
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -86,19 +87,6 @@ local function conditionTypeValues()
 	return values
 end
 
--- textInput builds a single-line EditBox that commits on Enter and clears
--- focus, matching AceConfig's `input` widget (which wires OnEnterPressed).
-local function textInput(label, initial, commit)
-	local edit = AceGUI:Create("EditBox")
-	edit:SetLabel(label)
-	edit:SetText(initial or "")
-	edit:SetCallback("OnEnterPressed", function(_, _, value)
-		commit(value)
-		edit.editbox:ClearFocus()
-	end)
-	return edit
-end
-
 -- dropdownField builds a dropdown bound to one condition field.
 local function dropdownField(condition, field, name, values, initial)
 	local dropdown = AceGUI:Create("Dropdown")
@@ -150,7 +138,7 @@ local function conditionField(condition, field, fieldType)
 		return edit
 	else
 		-- "spell", "string", and anything unknown render as a single-line box
-		return textInput(name, condition[field], function(value)
+		return TextInput.Build(name, condition[field], function(value)
 			condition[field] = value
 		end)
 	end
@@ -261,7 +249,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(enabled)
 
-	local labelInput = textInput("Label", rule.name, function(value)
+	local labelInput = TextInput.Build("Label", rule.name, function(value)
 		rule.name = value
 		-- redraw this card's title so the label change is visible immediately;
 		-- empty falls back to the spell name, else "Rule N"
