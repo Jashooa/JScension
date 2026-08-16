@@ -129,10 +129,12 @@ end
 -- the same walk CastBest performs, without casting; the button uses it to show
 -- the spell that a click would actually cast (the first PASSING rule, not the
 -- first enabled one - an earlier blocked rule must not pin the icon).
+-- The second return is a short reason ("player dead", "not compatible", or
+-- "no passing rule") so the caller can log it without re-deriving the checks.
 function Rotation.NextRule()
 	local profile = Profile.current()
-	if UnitIsDeadOrGhost("player") then return nil end
-	if not Compatibility.IsCompatible() then return nil end
+	if UnitIsDeadOrGhost("player") then return nil, "player dead" end
+	if not Compatibility.IsCompatible() then return nil, "not compatible" end
 
 	local rules = Profile.activeRules()
 	for i = 1, #rules do
@@ -143,7 +145,7 @@ function Rotation.NextRule()
 			end
 		end
 	end
-	return nil
+	return nil, "no passing rule"
 end
 
 -- InQueueWindow delegates to Game/Cast, which owns the queue-window logic.
@@ -163,15 +165,9 @@ function Rotation.CastBest()
 		Log.Write("cast", "blocked: outside the queue window")
 		return false
 	end
-	local rule = Rotation.NextRule()
+	local rule, reason = Rotation.NextRule()
 	if not rule then
-		if UnitIsDeadOrGhost("player") then
-			Log.Write("cast", "blocked: player dead")
-		elseif not Compatibility.IsCompatible() then
-			Log.Write("cast", "blocked: not compatible")
-		else
-			Log.Write("cast", "blocked: no passing rule")
-		end
+		Log.Write("cast", "blocked: " .. reason)
 		return false
 	end
 	Emit(rule)
