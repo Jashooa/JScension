@@ -17,17 +17,27 @@ local MAX_ENTRIES = 200
 local ring = {}   -- oldest first: { time, tag, message }
 local attachedProfile = nil
 
--- Write appends one entry, dropping the oldest when the ring is full.
+-- Persist copies the ring back into the attached profile so AceDB saves it.
+local function persist()
+	if attachedProfile then
+		attachedProfile.log = ring
+	end
+end
+
+-- Write appends one entry, dropping the oldest when the ring is full, and
+-- persists the ring so the entry survives logout.
 function ns.Log.Write(tag, message)
 	ring[#ring + 1] = { time = GetTime(), tag = tag, message = message }
 	if #ring > MAX_ENTRIES then
 		table.remove(ring, 1)
 	end
+	persist()
 end
 
--- Clear empties the ring.
+-- Clear empties the ring and persists, so a cleared log does not come back.
 function ns.Log.Clear()
 	ring = {}
+	persist()
 end
 
 -- Count returns the number of entries currently buffered.
@@ -57,18 +67,4 @@ function ns.Log.Attach(profile)
 	if type(profile.log) == "table" then
 		ring = profile.log
 	end
-end
-
--- Persist copies the ring back into the attached profile so AceDB saves it.
-local function persist()
-	if attachedProfile then
-		attachedProfile.log = ring
-	end
-end
-
--- override Write to persist after appending
-local baseWrite = ns.Log.Write
-function ns.Log.Write(tag, message)
-	baseWrite(tag, message)
-	persist()
 end

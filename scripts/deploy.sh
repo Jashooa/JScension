@@ -7,8 +7,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
 # --- Accessibility addon -> Interface/AddOns ---
+case "$ADDON_DEST" in
+	*/Interface/AddOns/Accessibility) ;;
+	*) echo "refusing to delete unexpected path: $ADDON_DEST" >&2; exit 1 ;;
+esac
 rm -rf "$ADDON_DEST"
-mkdir -p "$ADDON_DEST"
 
 ADDON_SRC="$SOLUTION_DIR/Accessibility"
 cp "$ADDON_SRC"/*.toc "$ADDON_SRC"/*.lua "$ADDON_SRC"/*.xml "$ADDON_DEST/"

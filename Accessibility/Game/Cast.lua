@@ -3,8 +3,8 @@
 --
 -- Sending a cast inside the queue window makes the client queue the spell
 -- (its SpellQueueWindow CVar), so the next cast starts the instant the current
--- one ends - no dead time between casts. Mirrors BadRotations' isCastingTime:
--- UnitCastingInfo/UnitChannelInfo return endTime in ms (5th value).
+-- one ends - no dead time between casts. UnitCastingInfo/UnitChannelInfo
+-- return endTime in ms (6th value; 5th is startTime).
 
 local _, ns = ...
 
@@ -26,9 +26,9 @@ function ns.Cast.inQueueWindow()
 	if window <= 0 then
 		return not UnitCastingInfo("player") and not UnitChannelInfo("player")
 	end
-	local endMs = select(5, UnitCastingInfo("player"))
+	local endMs = select(6, UnitCastingInfo("player"))
 	if not endMs then
-		endMs = select(5, UnitChannelInfo("player"))
+		endMs = select(6, UnitChannelInfo("player"))
 	end
 	if not endMs then return true end   -- idle: free to cast
 	-- an epsilon absorbs float error at the exact window edge (e.g. 12.0-11.6

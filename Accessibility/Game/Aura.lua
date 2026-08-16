@@ -31,11 +31,12 @@ end
 function ns.Aura.find(unit, name, kind, mineOnly)
 	if not unit or not UnitExists(unit) or not name or name == "" then return nil end
 	-- the editor stores an aura name, but accept a numeric spell ID too:
-	-- GetSpellInfo(id) resolves it to the name the aura scan reports
 	local id = tonumber(name)
 	if id then
-		name = select(1, GetSpellInfo(id)) or name
+		local resolved = select(1, GetSpellInfo(id))
+		if resolved then name = resolved end
 	end
+	if type(name) ~= "string" then return nil end
 	local scan = (kind == "debuff") and UnitDebuff or UnitBuff
 	-- strip the rank before lowercasing: the strip pattern is case-sensitive
 	local needle = stripRank(name):lower()

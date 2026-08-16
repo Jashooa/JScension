@@ -72,7 +72,6 @@ end
 -- by the condition table so it survives panel rebuilds.
 local conditionExpanded = {}
 
-
 -- conditionTypeValues returns the { key = label } map for the type dropdown.
 local function conditionTypeValues()
 	local list = Conditions.TypeList()
@@ -82,10 +81,6 @@ local function conditionTypeValues()
 	end
 	return values
 end
-
-
-
-
 
 -- dropdownField builds a dropdown bound to one condition field.
 local function dropdownField(condition, field, name, values, initial)
@@ -149,9 +144,6 @@ local function conditionField(condition, field, fieldType)
 	end
 end
 
--- buildConditionSettings fills the settings group with the type dropdown,
--- one control per registry-declared field, and a delete button. Widths match
--- the old editor: the type and delete are full width, fields keep their
 -- buildConditionSettings fills the expanded card with the type dropdown and
 -- one control per registry-declared field. Widths match the old editor: the
 -- type is full width, fields keep their default single width.
@@ -211,10 +203,6 @@ local function conditionCard(panel, rule, condIndex, container)
 	end
 	return card
 end
-
-
-
-
 
 -- ---------------------------------------------------------------------------
 -- rule card

@@ -158,6 +158,7 @@ static char g_logpath[MAX_PATH];
 static void init_logpath(HMODULE self) {
     static const char LOGNAME[] = "compatibility.log";
     DWORD n = GetModuleFileNameA(self, g_logpath, MAX_PATH);
+    if (n >= MAX_PATH) n = MAX_PATH - 1;   /* truncated: stay inside the buffer */
     char* slash = NULL;
     DWORD i;
     for (i = 0; i < n; i++) {

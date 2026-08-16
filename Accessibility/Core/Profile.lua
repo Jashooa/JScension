@@ -283,10 +283,15 @@ function Profile.deleteRotation(rotation)
 end
 
 -- renameRotation sets a rotation's name, keeping the active pointer in sync.
+-- A name already taken by another rotation is refused, matching addRotation.
 function Profile.renameRotation(rotation, newName)
 	newName = newName or ""
 	newName = newName:match("^%s*(.-)%s*$") or ""
 	if newName == "" then return false end
+	for i = 1, #Profile.rotations() do
+		local other = Profile.rotations()[i]
+		if other ~= rotation and other.name == newName then return false end
+	end
 	if Profile.current().active == rotation.name then
 		Profile.current().active = newName
 	end

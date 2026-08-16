@@ -23,11 +23,14 @@ local state = {
 	passiveSpells = {}, -- names reported as passive by the spellbook
 }
 
+local ns = {}
+
 local function setUnit(id, t) state.units[id] = t end
 local function setSpell(name, t) state.spells[name] = t end
 local function setKnown(names)
 	state.knownSpells = {}
 	for i = 1, #names do state.knownSpells[i] = names[i] end
+	if ns.SpellPicker then ns.SpellPicker.Refresh() end
 end
 
 -- ---------------------------------------------------------------------------
@@ -61,7 +64,6 @@ fake.LibStub = function(name)
 	end
 	return nil
 end
-fake.GetSpellInfo = function() return "spell", "", "Interface\\Icons\\TEMP" end
 fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
 fake.GetNumSpellTabs = function() return 0 end
 fake.GetSpellTabInfo = function() return "General", "", 0, 0 end
@@ -79,16 +81,17 @@ fake.UnitHealthMax = function(u) local x = state.units[u]; return x and x.maxHea
 fake.UnitPower = function(u) local x = state.units[u]; return x and x.power or 0 end
 fake.UnitPowerMax = function(u) local x = state.units[u]; return x and x.maxPower or 0 end
 fake.UnitCanAttack = function(_, u) local x = state.units[u]; return x and x.hostile end
--- UnitCastingInfo/UnitChannelInfo return (name, _, _, startMs, endMs, ...).
--- The unit table may set castingEndMs / channelEndMs to simulate a cast.
+-- UnitCastingInfo/UnitChannelInfo return (name, subText, text, texture,
+-- startTime, endTime, ...) in this client. The unit table may set
+-- castingEndMs / channelEndMs to simulate a cast.
 fake.UnitCastingInfo = function(u)
 	local x = state.units[u]
-	if x and x.castingEndMs then return "Cast", "", "", 0, x.castingEndMs end
+	if x and x.castingEndMs then return "Cast", "", "", 0, 0, x.castingEndMs end
 	return nil
 end
 fake.UnitChannelInfo = function(u)
 	local x = state.units[u]
-	if x and x.channelEndMs then return "Channel", "", "", 0, x.channelEndMs end
+	if x and x.channelEndMs then return "Channel", "", "", 0, 0, x.channelEndMs end
 	return nil
 end
 fake.UnitAffectingCombat = function() return state.inCombat end
@@ -97,14 +100,15 @@ fake.IsUsableSpell = function(s) local x = state.spells[s]; if x then return x.u
 fake.GetSpellCooldown = function(s) local x = state.spells[s]; if x then return x.cdStart, x.cdDuration end; return 0, 0 end
 fake.IsSpellInRange = function(s) local x = state.spells[s]; if x then return x.inRange end end
 fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
--- GetSpellInfo returns (name, rank, icon, powerCost, ...) in this client.
--- The spell table may set castMs to simulate a cast-time spell (used by the
--- engine's anti-spam gate, which reads the 4th return).
+-- GetSpellInfo returns (name, rank, icon, powerCost, isFunnel, powerType,
+-- castingTime, minRange, maxRange) in this client. The spell table may set
+-- castMs to simulate a cast-time spell (used by the engine's anti-spam
+-- gate, which reads the 7th return).
 fake.GetSpellInfo = function(id)
 	local x = type(id) == "string" and state.spells[id] or nil
 	local castMs = x and x.castMs or 0
-	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", castMs end
-	return "spell", "", "Interface\\Icons\\TEMP", castMs
+	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs end
+	return "spell", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs
 end
 -- GetSpellLink returns a hyperlink for a name or ID. The spell table may
 -- set testLink to simulate a resolved link; unknown spells return nil.
@@ -193,7 +197,6 @@ end
 -- load the modules
 -- ---------------------------------------------------------------------------
 
-local ns = {}
 -- Resolve the addon root from the script path, so the runner works from the
 -- addon root or one directory above it.
 local script = arg and arg[0] or "tests/run.lua"
@@ -680,6 +683,11 @@ do
 
 	-- rename refuses an empty name
 	ok("renameRotation refuses empty", Profile.renameRotation(prof().rotations[1], "  ") == false)
+	-- rename refuses a name already taken by another rotation
+	prof().rotations = { { name = "One", rules = {} }, { name = "Two", rules = {} } }
+	prof().active = "One"
+	ok("renameRotation refuses duplicate", Profile.renameRotation(prof().rotations[1], "Two") == false)
+	eq("renameRotation duplicate keeps name", prof().rotations[1].name, "One")
 
 	-- delete refuses the last rotation
 	prof().rotations = { { name = "Only", rules = {} } }
@@ -826,6 +834,9 @@ do
 	Log.Clear()
 	Log.Write("attach", "persisted")
 	eq("attach writes through to profile", profile.log[1].message, "persisted")
+	-- Clear must persist too, or the cleared ring comes back on the next save
+	Log.Clear()
+	eq("clear persists the empty ring", #profile.log, 0)
 
 	-- cap: writing MAX_ENTRIES+1 drops the oldest
 	Log.Clear()

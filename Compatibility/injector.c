@@ -100,13 +100,19 @@ int main(int argc, char** argv) {
     }
 
     /* 3. Allocate space in the game for the dll path string and copy it. */
-    void* mem = VirtualAllocEx(hProc, NULL, 64, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    SIZE_T pathLen = (SIZE_T)lstrlenA(dllPath) + 1;
+    void* mem = VirtualAllocEx(hProc, NULL, pathLen, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (!mem) {
         printf("compatibility: VirtualAllocEx failed: %lu\n", (unsigned long)GetLastError());
         CloseHandle(hProc);
         return 1;
     }
-    WriteProcessMemory(hProc, mem, dllPath, (SIZE_T)lstrlenA(dllPath) + 1, NULL);
+    if (!WriteProcessMemory(hProc, mem, dllPath, pathLen, NULL)) {
+        printf("compatibility: WriteProcessMemory failed: %lu\n", (unsigned long)GetLastError());
+        VirtualFreeEx(hProc, mem, 0, MEM_RELEASE);
+        CloseHandle(hProc);
+        return 1;
+    }
 
     /* 4. Run LoadLibraryA(path) inside the game via a remote thread.
      * kernel32 is loaded at the same address in every process of the

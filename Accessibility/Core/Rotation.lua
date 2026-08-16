@@ -95,7 +95,7 @@ local function RulePasses(rule)
 	-- therefore only gates instant spells, and never a re-send of the spell
 	-- currently being cast or channelled (that is a queue, not spam).
 	local ref = spellReference(rule)
-	local castMs = select(4, GetSpellInfo(ref))
+	local castMs = select(7, GetSpellInfo(ref))
 	local currentCast = select(1, UnitCastingInfo("player")) or select(1, UnitChannelInfo("player"))
 	local refName = (type(ref) == "number") and select(1, GetSpellInfo(ref)) or ref
 	if not (castMs and castMs > 0) and currentCast ~= refName then

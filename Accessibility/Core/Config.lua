@@ -17,6 +17,7 @@ local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
 
 local Profile = ns.Profile
+local Constants = ns.Constants
 
 local function currentProfile()
 	return ns.addon.db.profile
@@ -222,7 +223,7 @@ function Config.BuildOptions()
 						type = "range", name = "Spell queue window", order = 5,
 						desc = "Start the next cast this many seconds before the current one ends, so the client queues it and casts back to back. 0 casts only when idle.",
 						min = 0, max = 1.0, step = 0.05,
-						get = function() return p.queueWindow or 0.4 end,
+						get = function() return p.queueWindow or Constants.DEFAULT_QUEUE_WINDOW end,
 						set = function(_, v) p.queueWindow = v end,
 					},
 					newRotation = {
