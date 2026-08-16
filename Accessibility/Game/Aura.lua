@@ -15,8 +15,9 @@
 local _, ns = ...
 
 local Constants = ns.Constants
+local Spell = ns.Spell
 
-ns.Aura = {}
+local Aura = {}
 
 -- stripRank removes a trailing "(Rank N)" or "(Ranks N-M)" suffix.
 local function stripRank(s)
@@ -28,12 +29,12 @@ end
 -- find walks an aura list for a name. It returns remaining seconds and stacks.
 -- mineOnly restricts the search to auras the player applied, which is the
 -- usual need for a dot or a self buff.
-function ns.Aura.find(unit, name, kind, mineOnly)
+function Aura.find(unit, name, kind, mineOnly)
 	if not unit or not UnitExists(unit) or not name or name == "" then return nil end
 	-- the editor stores an aura name, but accept a numeric spell ID too:
 	local id = tonumber(name)
 	if id then
-		local resolved = select(1, GetSpellInfo(id))
+		local resolved = Spell.name(id)
 		if resolved then name = resolved end
 	end
 	if type(name) ~= "string" then return nil end
@@ -63,3 +64,5 @@ function ns.Aura.find(unit, name, kind, mineOnly)
 	end
 	return nil
 end
+
+ns.Aura = Aura

@@ -14,6 +14,7 @@ Utils\SpellPicker.lua
 Utils\SpellTooltip.lua
 
 Game\Unit.lua
+Game\Spell.lua
 Game\Aura.lua
 Game\Cast.lua
 Game\Cooldown.lua

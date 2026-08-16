@@ -9,6 +9,7 @@
 local _, ns = ...
 
 local Constants = ns.Constants
+local Spell = ns.Spell
 
 local Cooldown = {}
 
@@ -28,9 +29,9 @@ end
 -- global cooldown counts as ready: the GCD gate spaces on-GCD spells, so the
 -- ready border must not flicker for a spell that is only on the GCD.
 function Cooldown.isReady(ref)
-	local usable, noMana = IsUsableSpell(ref)
+	local usable, noMana = Spell.usable(ref)
 	if not usable or noMana then return false end
-	local start, duration = GetSpellCooldown(ref)
+	local start, duration = Spell.cooldown(ref)
 	if not start or start == 0 then return true end
 	if Cooldown.isGCD(start, duration) then return true end
 	return (start + duration) <= GetTime()

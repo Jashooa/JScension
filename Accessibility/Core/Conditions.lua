@@ -27,6 +27,7 @@ local Compare = ns.Compare
 local Unit = ns.Unit
 local Aura = ns.Aura
 local Cooldown = ns.Cooldown
+local Spell = ns.Spell
 
 -- SNIPPET_MAX truncates long Lua snippets in the editor display.
 local SNIPPET_MAX = 40
@@ -58,9 +59,9 @@ register("target_type", {
 		elseif want == "player" then
 			return unit == "player"
 		elseif want == "enemy" then
-			return Unit.unitOK(unit) and UnitCanAttack("player", unit) and true or false
+			return Unit.unitOK(unit) and Unit.canAttack(unit)
 		elseif want == "friendly" then
-			return Unit.unitOK(unit) and not UnitCanAttack("player", unit)
+			return Unit.unitOK(unit) and not Unit.canAttack(unit)
 		end
 		return false
 	end,
@@ -146,7 +147,7 @@ register("spell_ready", {
 	end,
 	eval = function(condition)
 		if not condition.spell or condition.spell == "" then return false end
-		local start, duration = GetSpellCooldown(condition.spell)
+		local start, duration = Spell.cooldown(condition.spell)
 		if not start then return false end
 		if start == 0 then return true end
 		-- a duration at or below GCD_DURATION is the global cooldown, not this
@@ -155,7 +156,6 @@ register("spell_ready", {
 		return (start + duration) <= GetTime()
 	end,
 })
-
 register("spell_usable", {
 	label = "Spell is usable (known, enough resource)",
 	fields = { spell = "spell" },
@@ -164,7 +164,7 @@ register("spell_usable", {
 	end,
 	eval = function(condition)
 		if not condition.spell or condition.spell == "" then return false end
-		local usable, noMana = IsUsableSpell(condition.spell)
+		local usable, noMana = Spell.usable(condition.spell)
 		return usable and not noMana
 	end,
 })
@@ -177,7 +177,7 @@ register("cooldown_remaining", {
 	end,
 	eval = function(condition)
 		if not condition.spell or condition.spell == "" then return false end
-		local start, duration = GetSpellCooldown(condition.spell)
+		local start, duration = Spell.cooldown(condition.spell)
 		if not start then return false end
 		local remaining = 0
 		if start > 0 and duration and duration > Constants.GCD_DURATION then
@@ -207,7 +207,7 @@ register("unit_hostile", {
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "target"
-		return Unit.unitOK(unit) and UnitCanAttack("player", unit) and true or false
+		return Unit.unitOK(unit) and Unit.canAttack(unit)
 	end,
 })
 
@@ -219,8 +219,7 @@ register("unit_casting", {
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "target"
-		if not UnitExists(unit) then return false end
-		return (UnitCastingInfo(unit) or UnitChannelInfo(unit)) and true or false
+		return Unit.exists(unit) and Unit.isCasting(unit)
 	end,
 })
 
@@ -229,7 +228,7 @@ register("moving", {
 	fields = {},
 	describe = function() return "you are moving" end,
 	eval = function()
-		local speed = GetUnitSpeed("player")
+		local speed = Unit.speed("player")
 		return speed and speed > 0
 	end,
 })
@@ -239,7 +238,7 @@ register("standing_still", {
 	fields = {},
 	describe = function() return "you are standing still" end,
 	eval = function()
-		local speed = GetUnitSpeed("player")
+		local speed = Unit.speed("player")
 		return not speed or speed == 0
 	end,
 })
@@ -248,7 +247,7 @@ register("in_combat", {
 	label = "You are in combat",
 	fields = {},
 	describe = function() return "you are in combat" end,
-	eval = function() return UnitAffectingCombat("player") and true or false end,
+	eval = function() return Unit.inCombat("player") end,
 })
 
 register("range", {
@@ -259,8 +258,8 @@ register("range", {
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "target"
-		if not condition.spell or condition.spell == "" or not UnitExists(unit) then return false end
-		return IsSpellInRange(condition.spell, unit) == 1
+		if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
+		return Spell.inRange(condition.spell, unit)
 	end,
 })
 
