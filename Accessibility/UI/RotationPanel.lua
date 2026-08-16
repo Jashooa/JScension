@@ -132,8 +132,8 @@ local function conditionField(condition, field, fieldType)
 		edit:SetLabel(name)
 		edit:SetFullWidth(true)
 		edit:SetText(condition[field] or "")
-		edit:SetCallback("OnTextChanged", function(_, _, value)
-			condition[field] = value
+		edit:SetCallback("OnEditFocusLost", function()
+			condition[field] = edit.editBox:GetText()
 		end)
 		return edit
 	else
@@ -141,8 +141,9 @@ local function conditionField(condition, field, fieldType)
 		local edit = AceGUI:Create("EditBox")
 		edit:SetLabel(name)
 		edit:SetText(condition[field] or "")
-		edit:SetCallback("OnTextChanged", function(_, _, value)
+		edit:SetCallback("OnEnterPressed", function(_, _, value)
 			condition[field] = value
+			edit.editbox:ClearFocus()
 		end)
 		return edit
 	end
