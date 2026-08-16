@@ -77,6 +77,8 @@
  */
 #include <windows.h>
 #include <string.h>
+#include "common.h"
+
 
 /* ------------------------------------------------------------------ *
  * Game addresses. Stable because Ascension.exe has NO ASLR.
@@ -677,9 +679,8 @@ static LRESULT CALLBACK SubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
  * retries registration until the manifest is populated, then handles /reload. */
 static DWORD WINAPI SetupThread(LPVOID param) {
     HWND hwnd;
-    (void)param;
     logmsg("setup: looking for game window");
-    hwnd = FindWindowA("GxWindowClassD3d", NULL);
+    hwnd = FindWindowA(GAME_WINDOW_CLASS, NULL);
     if (!hwnd) {
         fatal_exit("setup: game window not found - unload (inject once the game is up)");
     }

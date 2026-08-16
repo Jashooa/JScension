@@ -36,6 +36,7 @@
 #include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include "common.h"
 
 #define LOAD_TIMEOUT_MS 30000
 
@@ -57,7 +58,7 @@ static const char* resolve_dll_path(char* buf, size_t buflen)
     }
     {
         size_t len = strlen(buf);
-        const char name[] = "compatibility.dll";
+        const char name[] = COMPAT_DLL_NAME;
         if (len + sizeof(name) > buflen) {
             return NULL;
         }
@@ -82,7 +83,7 @@ int main(int argc, char** argv) {
 
     /* 1. Find the game window. FindWindowA enumerates top-level windows
      * for the class; the game creates exactly one GxWindowClassD3d window. */
-    HWND hwnd = FindWindowA("GxWindowClassD3d", NULL);
+    HWND hwnd = FindWindowA(GAME_WINDOW_CLASS, NULL);
     if (!hwnd) {
         printf("compatibility: game window not found\n");
         return 1;
