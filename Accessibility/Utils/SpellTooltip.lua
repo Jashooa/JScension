@@ -24,8 +24,13 @@ function SpellTooltip.Attach(frame, ruleProvider, anchor)
 		GameTooltip:SetHyperlink(link)
 		GameTooltip:Show()
 	end)
-	frame:SetScript("OnLeave", function()
-		GameTooltip:Hide()
+	frame:SetScript("OnLeave", function(self)
+		-- GameTooltip is one global frame shared by every tooltip anchor.
+		-- Hide only when this frame is the one that showed it, so leaving one
+		-- hover surface does not kill a tooltip another frame just opened.
+		if GameTooltip:GetOwner() == self then
+			GameTooltip:Hide()
+		end
 	end)
 end
 
