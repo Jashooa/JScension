@@ -54,11 +54,12 @@ local function ruleTitle(rule, index)
 	return ("|T%s:32:32|t %s"):format(ruleIcon(rule), label)
 end
 
--- SpellValues returns the { name = name } map for the spell dropdown. The
--- rule's current spell is added so a stale value still renders.
+-- SpellValues returns the { name = name } map for the spell dropdown, with a
+-- leading empty entry so "no spell" is a selectable state. The rule's current
+-- spell is added so a stale value still renders.
 local function spellValues(rule)
 	local list = SpellPicker.List()
-	local values = {}
+	local values = { [""] = "-- none --" }
 	for i = 1, #list do
 		values[list[i]] = list[i]
 	end
@@ -262,19 +263,20 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		rule.name = value
 	end)
 	card:AddChild(labelInput)
-
 	local spellIdInput
+	local syncing = false
 	local spellDropdown = AceGUI:Create("Dropdown")
 	spellDropdown:SetLabel("Spell")
 	spellDropdown:SetFullWidth(true)
 	spellDropdown:SetList(spellValues(rule))
 	spellDropdown:SetValue(rule.spell or "")
 	spellDropdown:SetCallback("OnValueChanged", function(_, _, value)
+		if syncing then return end
+		syncing = true
 		rule.spell = value
-		-- resolve the ID silently so the user never types it; a non-book
-		-- spell resolves to nil and leaves the field blank for manual entry
 		rule.spellID = Spell.id(value)
 		spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
+		syncing = false
 		panel:NotifyPanelChanged()
 	end)
 	card:AddChild(spellDropdown)
@@ -284,7 +286,31 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	spellIdInput:SetRelativeWidth(0.5)
 	spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
 	spellIdInput:SetCallback("OnTextChanged", function(_, _, value)
+		if syncing then return end
+		syncing = true
 		rule.spellID = tonumber(value)
+		-- resolve the ID back to a name so the dropdown stays in sync, and
+		-- warn when the ID disagrees with the stored name
+		if rule.spellID and rule.spellID > 0 then
+			local resolved = Spell.name(rule.spellID)
+			if resolved then
+				if rule.spell and rule.spell ~= "" and rule.spell ~= resolved then
+					DEFAULT_CHAT_FRAME:AddMessage(("Accessibility: spell ID %d is %q, not %q"):format(
+						rule.spellID, resolved, rule.spell))
+				end
+				rule.spell = resolved
+				if SpellPicker.IsKnown(resolved) then
+					spellDropdown:SetValue(resolved)
+				else
+					spellDropdown:SetValue("")
+				end
+			else
+				rule.spell = ""
+				spellDropdown:SetValue("")
+			end
+		end
+		syncing = false
+		panel:NotifyPanelChanged()
 	end)
 	card:AddChild(spellIdInput)
 
