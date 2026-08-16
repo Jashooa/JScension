@@ -24,6 +24,7 @@ Core\Profile.lua
 Core\Conditions.lua
 Core\Rotation.lua
 Core\Config.lua
+Core\Slash.lua
 
 UI\Widgets\ContentInset.lua
 UI\Widgets\TitleButtonGroup.lua
