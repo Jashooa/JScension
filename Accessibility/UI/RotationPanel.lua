@@ -257,7 +257,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	labelInput:SetLabel("Label")
 	labelInput:SetFullWidth(true)
 	labelInput:SetText(rule.name or "")
-	labelInput:SetCallback("OnTextChanged", function(_, _, value)
+	labelInput:SetCallback("OnEnterPressed", function(_, _, value)
 		rule.name = value
 		-- redraw this card's title so the label change is visible immediately;
 		-- empty falls back to the spell name, else "Rule N"
