@@ -262,6 +262,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		-- redraw this card's title so the label change is visible immediately;
 		-- empty falls back to the spell name, else "Rule N"
 		card:SetTitle(ruleTitle(rule, ruleIndex))
+		labelInput.editbox:ClearFocus()
 	end)
 	card:AddChild(labelInput)
 	local spellDropdown = AceGUI:Create("Dropdown")
