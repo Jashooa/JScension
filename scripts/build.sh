@@ -25,7 +25,7 @@ fi
 CB_BYTES="$(i686-w64-mingw32-objdump -s \
 	--start-address="0x$(printf '%x' $((0x$CB_VMA + 0x4d)))" \
 	--stop-address="0x$(printf '%x' $((0x$CB_VMA + 0x50)))" \
-	"$COMPAT_BIN_DIR/$COMPAT_DLL_NAME" | awk 'NR==5{bytes=$2} END{print bytes}')"
+	"$COMPAT_BIN_DIR/$COMPAT_DLL_NAME" | awk 'NF>=2 && $1 ~ /^[0-9a-f]+$/ {print $2; exit}')"
 if [ "$CB_BYTES" != "b30100" ]; then
 	echo "error: Compatibility_cb descriptor bytes are '$CB_BYTES', expected 'b30100'" >&2
 	echo "       a toolchain change altered the naked stub; see CALLBACK DESCRIPTOR" >&2
