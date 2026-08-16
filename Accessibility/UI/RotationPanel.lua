@@ -86,6 +86,19 @@ local function conditionTypeValues()
 	return values
 end
 
+-- textInput builds a single-line EditBox that commits on Enter and clears
+-- focus, matching AceConfig's `input` widget (which wires OnEnterPressed).
+local function textInput(label, initial, commit)
+	local edit = AceGUI:Create("EditBox")
+	edit:SetLabel(label)
+	edit:SetText(initial or "")
+	edit:SetCallback("OnEnterPressed", function(_, _, value)
+		commit(value)
+		edit.editbox:ClearFocus()
+	end)
+	return edit
+end
+
 -- dropdownField builds a dropdown bound to one condition field.
 local function dropdownField(condition, field, name, values, initial)
 	local dropdown = AceGUI:Create("Dropdown")
@@ -98,8 +111,7 @@ local function dropdownField(condition, field, name, values, initial)
 	return dropdown
 end
 
--- conditionField renders one registry-declared field as the right AceGUI
--- widget for its type.
+-- conditionField renders one registry-declared field as the right AceGUI widget.
 local function conditionField(condition, field, fieldType)
 	local name = field:gsub("_", " ")
 	if fieldType == "number" then
@@ -138,14 +150,9 @@ local function conditionField(condition, field, fieldType)
 		return edit
 	else
 		-- "spell", "string", and anything unknown render as a single-line box
-		local edit = AceGUI:Create("EditBox")
-		edit:SetLabel(name)
-		edit:SetText(condition[field] or "")
-		edit:SetCallback("OnEnterPressed", function(_, _, value)
+		return textInput(name, condition[field], function(value)
 			condition[field] = value
-			edit.editbox:ClearFocus()
 		end)
-		return edit
 	end
 end
 
@@ -254,17 +261,13 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(enabled)
 
-	local labelInput = AceGUI:Create("EditBox")
-	labelInput:SetLabel("Label")
-	labelInput:SetFullWidth(true)
-	labelInput:SetText(rule.name or "")
-	labelInput:SetCallback("OnEnterPressed", function(_, _, value)
+	local labelInput = textInput("Label", rule.name, function(value)
 		rule.name = value
 		-- redraw this card's title so the label change is visible immediately;
 		-- empty falls back to the spell name, else "Rule N"
 		card:SetTitle(ruleTitle(rule, ruleIndex))
-		labelInput.editbox:ClearFocus()
 	end)
+	labelInput:SetFullWidth(true)
 	card:AddChild(labelInput)
 	local spellDropdown = AceGUI:Create("Dropdown")
 	spellDropdown:SetLabel("Spell")
