@@ -44,11 +44,11 @@ Profile.defaults = {
 function Profile.current()
 	return ns.addon.db.profile
 end
-
 -- coercion helpers come from Utils/Coerce
 local asBool = ns.Coerce.asBool
 local asString = ns.Coerce.asString
 local asNumber = ns.Coerce.asNumber
+local Constants = ns.Constants
 
 -- ---------------------------------------------------------------------------
 -- rule sanitization
@@ -67,8 +67,7 @@ local function sanitizeRule(rule)
 	if sid and sid <= 0 then sid = nil end
 
 	local unit = asString(rule.unit, "target")
-	if unit ~= "player" and unit ~= "target" and unit ~= "focus"
-		and unit ~= "pet" and unit ~= "mouseover" then
+	if not Constants.UNIT_TOKENS[unit] then
 		unit = "target"
 	end
 

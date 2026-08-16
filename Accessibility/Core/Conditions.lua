@@ -371,7 +371,7 @@ function Conditions.Sanitize(condition)
 end
 
 -- Dropdown value sets, used by the editor.
-Conditions.Units = { player = "player", target = "target", focus = "focus", pet = "pet", mouseover = "mouseover" }
+Conditions.Units = Constants.UNIT_TOKENS
 Conditions.Ops = { ["<"] = "<", ["<="] = "<=", [">"] = ">", [">="] = ">=", ["=="] = "==", ["~="] = "~=" }
 Conditions.Kinds = { buff = "buff", debuff = "debuff" }
 Conditions.TargetTypes = { any = "any", enemy = "enemy", friendly = "friendly", player = "player" }

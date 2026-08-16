@@ -13,4 +13,7 @@ ns.Constants = {
 	-- current cast's end is queued by the client, so the next cast starts
 	-- with no dead time.
 	DEFAULT_QUEUE_WINDOW = 0.4,
+	-- The valid unit tokens. The sanitizer whitelists against this, the
+	-- editor dropdown reads it, and the engine's self-cast checks use it.
+	UNIT_TOKENS = { player = "player", target = "target", focus = "focus", pet = "pet", mouseover = "mouseover" },
 }
