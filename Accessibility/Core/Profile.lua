@@ -226,17 +226,18 @@ local function uniqueName(base)
 	end
 end
 
+-- RULE_FIELDS lists every scalar field a rule carries, in the order a copy
+-- must reproduce them. copyRule walks it so a new field is copied without a
+-- second edit here. conditions is a list and is deep-copied separately.
+local RULE_FIELDS = { "name", "spell", "spellID", "enabled", "unit" }
+
 -- copyRule deep-copies one rule (conditions included), stripping the derived
 -- compile cache the "lua" condition type stores on its table.
 local function copyRule(rule)
-	local copy = {
-		name = rule.name,
-		spell = rule.spell,
-		spellID = rule.spellID,
-		enabled = rule.enabled,
-		unit = rule.unit,
-		conditions = {},
-	}
+	local copy = { conditions = {} }
+	for i = 1, #RULE_FIELDS do
+		copy[RULE_FIELDS[i]] = rule[RULE_FIELDS[i]]
+	end
 	for i = 1, #rule.conditions do
 		local src = rule.conditions[i]
 		local condition = {}

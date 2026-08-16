@@ -26,6 +26,7 @@ local Constants = ns.Constants
 local Compare = ns.Compare
 local Unit = ns.Unit
 local Aura = ns.Aura
+local Cooldown = ns.Cooldown
 
 -- SNIPPET_MAX truncates long Lua snippets in the editor display.
 local SNIPPET_MAX = 40
@@ -148,8 +149,9 @@ register("spell_ready", {
 		local start, duration = GetSpellCooldown(condition.spell)
 		if not start then return false end
 		if start == 0 then return true end
-		-- A duration at or below GCD_DURATION is the global cooldown, not this spell's own.
-		if duration and duration <= Constants.GCD_DURATION then return true end
+		-- a duration at or below GCD_DURATION is the global cooldown, not this
+		-- spell's own.
+		if Cooldown.isGCD(start, duration) then return true end
 		return (start + duration) <= GetTime()
 	end,
 })

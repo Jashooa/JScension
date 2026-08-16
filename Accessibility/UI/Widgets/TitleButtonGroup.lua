@@ -14,9 +14,11 @@
 --   })
 --   section:AddChild(contentWidget)
 
+local _, ns = ...
 local Type, Version = "TitleButtonGroup", 1
 local AceGUI = LibStub("AceGUI-3.0", true)
 if not AceGUI or (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
+local ContentInset = ns.ContentInset
 
 local BUTTON_GAP = 2
 local TITLE_RIGHT_INSET = 14
@@ -102,21 +104,8 @@ local methods = {
 		self:SetHeight((height or 0) + baseHeight)
 	end,
 
-	["OnWidthSet"] = function(self, width)
-		local content = self.content
-		local contentWidth = width - 20
-		if contentWidth < 0 then contentWidth = 0 end
-		content:SetWidth(contentWidth)
-		content.width = contentWidth
-	end,
-
-	["OnHeightSet"] = function(self, height)
-		local content = self.content
-		local contentHeight = height - 20
-		if contentHeight < 0 then contentHeight = 0 end
-		content:SetHeight(contentHeight)
-		content.height = contentHeight
-	end,
+	["OnWidthSet"] = ContentInset.OnWidthSet,
+	["OnHeightSet"] = ContentInset.OnHeightSet,
 }
 
 -- ---------------------------------------------------------------------------

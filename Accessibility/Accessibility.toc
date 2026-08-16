@@ -16,6 +16,7 @@ Utils\SpellTooltip.lua
 Game\Unit.lua
 Game\Aura.lua
 Game\Cast.lua
+Game\Cooldown.lua
 
 Core\Compatibility.lua
 Core\Profile.lua
@@ -23,6 +24,7 @@ Core\Conditions.lua
 Core\Rotation.lua
 Core\Config.lua
 
+UI\Widgets\ContentInset.lua
 UI\Widgets\TitleButtonGroup.lua
 UI\RotationButton.lua
 UI\RotationPanel.lua

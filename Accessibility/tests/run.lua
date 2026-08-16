@@ -210,6 +210,7 @@ loadModule(ROOT .. "Utils/Log.lua", ns)
 loadModule(ROOT .. "Game/Unit.lua", ns)
 loadModule(ROOT .. "Game/Aura.lua", ns)
 loadModule(ROOT .. "Game/Cast.lua", ns)
+loadModule(ROOT .. "Game/Cooldown.lua", ns)
 loadModule(ROOT .. "Core/Compatibility.lua", ns)
 loadModule(ROOT .. "Core/Profile.lua", ns)
 loadModule(ROOT .. "Utils/SpellPicker.lua", ns)
@@ -646,6 +647,28 @@ state.auras.target = {}
 ok("aura missing resolves by name", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
 state.auras.target = { { kind = "debuff", name = "Moonfire (Rank 2)", count = 1, remaining = 10, mine = true } }
 ok("aura field accepts spell ID", Conditions.Eval({ type = "aura_missing", unit = "target", aura = 8921, kind = "debuff" }) == false)
+-- ---------------------------------------------------------------------------
+-- Cooldown helper tests
+-- ---------------------------------------------------------------------------
+
+do
+	local Cooldown = ns.Cooldown
+
+	ok("isGCD true for a 1.5s cooldown", Cooldown.isGCD(state.time, 1.5) == true)
+	ok("isGCD false for a 5s cooldown", Cooldown.isGCD(state.time, 5) == false)
+	ok("isGCD false with no start", Cooldown.isGCD(0, 1.5) == false)
+	ok("isOwnCooldown true for a 5s cooldown", Cooldown.isOwnCooldown(state.time, 5) == true)
+	ok("isOwnCooldown false for a 1.5s cooldown", Cooldown.isOwnCooldown(state.time, 1.5) == false)
+
+	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
+	ok("isReady true off cooldown", Cooldown.isReady("Fireball") == true)
+	setSpell("Fireball", { usable = false, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
+	ok("isReady false not usable", Cooldown.isReady("Fireball") == false)
+	setSpell("Fireball", { usable = true, noMana = false, cdStart = state.time, cdDuration = 5, inRange = 1 })
+	ok("isReady false on own cooldown", Cooldown.isReady("Fireball") == false)
+	setSpell("Fireball", { usable = true, noMana = false, cdStart = state.time, cdDuration = 1.5, inRange = 1 })
+	ok("isReady true on the GCD (not the spell's own)", Cooldown.isReady("Fireball") == true)
+end
 
 -- ---------------------------------------------------------------------------
 -- Rotation management tests
@@ -726,7 +749,9 @@ do
 
 	ok("rotations is a group", rotGroup.type == "group")
 	ok("rotations is a tree", rotGroup.childGroups == "tree")
-	ok("newRotation present", rotGroup.args.newRotation ~= nil)
+	ok("rotationKey builds the option key", Config.rotationKey(3) == "rotation3")
+	ok("rotationIndexFromKey parses the key", Config.rotationIndexFromKey("rotation2") == 2)
+	ok("rotationIndexFromKey rejects a non-key", Config.rotationIndexFromKey("rotationPanel") == nil)
 	ok("rotation1 present", rotGroup.args.rotation1 ~= nil)
 	ok("rotation2 present", rotGroup.args.rotation2 ~= nil)
 	ok("no rot3", rotGroup.args.rot3 == nil)

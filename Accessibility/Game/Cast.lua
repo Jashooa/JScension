@@ -12,9 +12,23 @@ local Constants = ns.Constants
 
 ns.Cast = {}
 
+-- currentCast returns the player's active cast or channel as (name, endMs),
+-- or nil when idle. It is the single owner of the UnitCastingInfo/
+-- UnitChannelInfo return positions (name = 1st, endTime = 6th).
+function ns.Cast.currentCast()
+	local name = select(1, UnitCastingInfo("player"))
+	local endMs = select(6, UnitCastingInfo("player"))
+	if not name then
+		name = select(1, UnitChannelInfo("player"))
+		endMs = select(6, UnitChannelInfo("player"))
+	end
+	if not name then return nil end
+	return name, endMs
+end
+
 -- isCasting returns true while the player is casting or channelling.
 function ns.Cast.isCasting()
-	return UnitCastingInfo("player") ~= nil or UnitChannelInfo("player") ~= nil
+	return ns.Cast.currentCast() ~= nil
 end
 
 -- inQueueWindow returns true when a cast may be sent now: either the player
@@ -24,14 +38,12 @@ end
 function ns.Cast.inQueueWindow()
 	local window = ns.Profile.current().queueWindow or Constants.DEFAULT_QUEUE_WINDOW
 	if window <= 0 then
-		return not UnitCastingInfo("player") and not UnitChannelInfo("player")
+		return ns.Cast.currentCast() == nil
 	end
-	local endMs = select(6, UnitCastingInfo("player"))
-	if not endMs then
-		endMs = select(6, UnitChannelInfo("player"))
-	end
+	local _, endMs = ns.Cast.currentCast()
 	if not endMs then return true end   -- idle: free to cast
 	-- an epsilon absorbs float error at the exact window edge (e.g. 12.0-11.6
 	-- is 0.39999... in binary, so a bare <= would reject the boundary)
 	return (endMs / 1000 - GetTime()) <= (window + 0.001)
 end
+

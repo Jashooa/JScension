@@ -12,7 +12,7 @@ local RotationButton = {}
 local Profile = ns.Profile
 local Rotation = ns.Rotation
 local SpellPicker = ns.SpellPicker
-local Constants = ns.Constants
+local Cooldown = ns.Cooldown
 local SpellTooltip = ns.SpellTooltip
 
 local QUESTION_MARK = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -26,12 +26,7 @@ local autoButton = nil
 -- spellReady returns true when the rule's spell is usable and off cooldown.
 local function spellReady(rule)
 	local ref = SpellPicker.Ref(rule.spellID, rule.spell)
-	local usable, noMana = IsUsableSpell(ref)
-	if not usable or noMana then return false end
-	local start, duration = GetSpellCooldown(ref)
-	if not start or start == 0 then return true end
-	if duration and duration <= Constants.GCD_DURATION then return true end   -- the global cooldown
-	return (start + duration) <= GetTime()
+	return Cooldown.isReady(ref)
 end
 
 -- Refresh updates the icon and the ready border. The icon shows the spell a

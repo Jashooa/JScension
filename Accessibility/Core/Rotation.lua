@@ -13,6 +13,8 @@ local Compatibility = ns.Compatibility
 local Conditions = ns.Conditions
 local SpellPicker = ns.SpellPicker
 local Profile = ns.Profile
+local Cooldown = ns.Cooldown
+local Cast = ns.Cast
 local Constants = ns.Constants
 local Log = ns.Log
 
@@ -38,7 +40,7 @@ function Rotation.IsOnGCD()
 	local probe = Profile.current().gcdProbeSpell
 	if probe and probe ~= "" then
 		local start, duration = GetSpellCooldown(probe)
-		if start and start > 0 and duration and duration <= Constants.GCD_DURATION then
+		if Cooldown.isGCD(start, duration) then
 			return (start + duration) > GetTime()
 		end
 		return false
@@ -65,10 +67,10 @@ local function RulePasses(rule)
 	local usable, noMana = IsUsableSpell(spellReference(rule))
 	if not usable or noMana then return false end
 
-	-- gate 5: the spell's own cooldown must be up. A duration at or below
-	-- GCD_DURATION is the global cooldown, which the GCD gate handles.
+	-- gate 5: the spell's own cooldown must be up. The global cooldown is
+	-- handled by the GCD gate, not here.
 	local start, duration = GetSpellCooldown(spellReference(rule))
-	if start and start > 0 and duration and duration > Constants.GCD_DURATION then
+	if Cooldown.isOwnCooldown(start, duration) then
 		-- a real cooldown is running: clear the anti-spam marker, the cooldown
 		-- gate already spaces this spell
 		lastCastAt[rule.spell] = nil
@@ -96,7 +98,7 @@ local function RulePasses(rule)
 	-- currently being cast or channelled (that is a queue, not spam).
 	local ref = spellReference(rule)
 	local castMs = select(7, GetSpellInfo(ref))
-	local currentCast = select(1, UnitCastingInfo("player")) or select(1, UnitChannelInfo("player"))
+	local currentCast = Cast.currentCast()
 	local refName = (type(ref) == "number") and select(1, GetSpellInfo(ref)) or ref
 	if not (castMs and castMs > 0) and currentCast ~= refName then
 		local t = lastCastAt[rule.spell]

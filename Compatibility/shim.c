@@ -11,7 +11,8 @@
  *   instead of silently blocking. Frames created inside a Compatibility script
  *   inherit the trusted owner, so the addon's handlers cast directly for
  *   the rest of the session. Personal accessibility use; see the §8 series
- *   in research/ascension-client-analysis.md for the full RE background.
+ *   in ../research/ascension-client-analysis.md (outside this repo) for the
+ *   full RE background.
  *
  * MECHANISM (why this shape)
  *   DllMain spawns SetupThread -> finds the game window (GxWindowClassD3d),

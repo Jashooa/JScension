@@ -116,11 +116,25 @@ local function rotationGroup(rotation, index)
 	}
 end
 
+-- rotationKey builds the AceConfig option key for a rotation by list index.
+-- RotationPanel parses the key back with rotationIndexFromKey, so the
+-- "rotation<N>" format lives in one place.
+function Config.rotationKey(index)
+	return "rotation" .. index
+end
+
+-- rotationIndexFromKey parses an option key back to a 1-based rotation
+-- index, or nil when the key is not a rotation key.
+function Config.rotationIndexFromKey(key)
+	local index = key:match("^rotation(%d+)$")
+	return index and tonumber(index) or nil
+end
+
 local function rotationArgs()
 	local args = {}
 	local list = Profile.rotations() or {}
 	for i = 1, #list do
-		args["rotation" .. i] = rotationGroup(list[i], i)
+		args[Config.rotationKey(i)] = rotationGroup(list[i], i)
 	end
 	return args
 end

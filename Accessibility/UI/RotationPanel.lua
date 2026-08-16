@@ -24,7 +24,8 @@ local Profile = ns.Profile
 local Conditions = ns.Conditions
 local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
-
+local ContentInset = ns.ContentInset
+local Config = ns.Config
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 
@@ -331,21 +332,8 @@ local methods = {
 	-- no button text, so it is a no-op.
 	["SetText"] = function() end,
 
-	["OnWidthSet"] = function(self, width)
-		local content = self.content
-		local contentWidth = width - 20
-		if contentWidth < 0 then contentWidth = 0 end
-		content:SetWidth(contentWidth)
-		content.width = contentWidth
-	end,
-
-	["OnHeightSet"] = function(self, height)
-		local content = self.content
-		local contentHeight = height - 20
-		if contentHeight < 0 then contentHeight = 0 end
-		content:SetHeight(contentHeight)
-		content.height = contentHeight
-	end,
+	["OnWidthSet"] = ContentInset.OnWidthSet,
+	["OnHeightSet"] = ContentInset.OnHeightSet,
 
 	["LayoutFinished"] = function(self, width, height)
 		self:SetHeight((height or 0) + 40)
@@ -408,19 +396,15 @@ local methods = {
 	-- PanelRotation resolves this panel's rotation from the option path
 	-- AceConfig stored in the widget userdata: the path is the arg-key chain
 	-- from the root (e.g. {"rotations", "rotation1", "rotationPanel"}), and
-	-- the "rotationN" element indexes into the live rotation list.
+	-- the rotation<N> element indexes into the live rotation list.
 	["PanelRotation"] = function(self)
 		local user = self:GetUserDataTable()
 		local path = user.path
 		if type(path) ~= "table" then return nil end
 		for i = 1, #path do
-			local key = path[i]
-			if type(key) == "string" then
-				local index = key:match("^rotation(%d+)$")
-				if index then
-					local list = Profile.rotations()
-					return list[tonumber(index)]
-				end
+			local index = Config.rotationIndexFromKey(path[i])
+			if index then
+				return Profile.rotations()[index]
 			end
 		end
 		return nil
