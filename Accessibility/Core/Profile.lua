@@ -334,6 +334,7 @@ function Profile.addRule(rotation)
 end
 
 function Profile.deleteRule(rotation, index)
+	if index < 1 or index > #rotation.rules then return end
 	table.remove(rotation.rules, index)
 end
 
@@ -344,6 +345,7 @@ end
 
 -- deleteCondition removes a condition from a rule.
 function Profile.deleteCondition(rule, index)
+	if index < 1 or index > #rule.conditions then return end
 	table.remove(rule.conditions, index)
 end
 
