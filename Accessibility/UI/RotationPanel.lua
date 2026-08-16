@@ -263,6 +263,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(labelInput)
 
+	local spellIdInput
 	local spellDropdown = AceGUI:Create("Dropdown")
 	spellDropdown:SetLabel("Spell")
 	spellDropdown:SetFullWidth(true)
@@ -278,7 +279,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(spellDropdown)
 
-	local spellIdInput = AceGUI:Create("EditBox")
+	spellIdInput = AceGUI:Create("EditBox")
 	spellIdInput:SetLabel("Spell ID (optional)")
 	spellIdInput:SetRelativeWidth(0.5)
 	spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
