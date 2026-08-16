@@ -57,34 +57,19 @@ function SpellPicker.IsKnown(name)
 	return names[name] == true
 end
 
--- Ref returns the name-or-ID a rule casts with. A numeric ID wins over the
--- name when both are set.
-function SpellPicker.Ref(spellID, name)
-	if spellID and spellID > 0 then return spellID end
-	return name
-end
-
--- Icon returns the icon path for a rule, or nil when neither a valid ID nor a
--- name is set. The editor and the button both use it so icons are consistent.
+-- Icon returns the icon path for a rule, or nil when it has no spell name.
+-- The editor and the button both use it so icons are consistent.
 function SpellPicker.Icon(rule)
-	if rule.spellID and rule.spellID > 0 then
-		local _, _, icon = GetSpellInfo(rule.spellID)
-		return icon
-	end
 	if rule.spell and rule.spell ~= "" then
 		return GetSpellTexture(rule.spell)
 	end
 	return nil
 end
 
--- Link returns the spell hyperlink for a rule, or nil when the rule has no
--- usable spell. A stored ID wins; a name resolves through GetSpellLink. This
--- client's GetSpellInfo exposes no spell ID, so links come from GetSpellLink.
--- Used for tooltips.
+-- Link returns the spell hyperlink for a rule, or nil when it has no spell
+-- name. This client's GetSpellInfo exposes no spell ID, so links come from
+-- GetSpellLink. Used for tooltips.
 function SpellPicker.Link(rule)
-	if rule.spellID and rule.spellID > 0 then
-		return select(1, GetSpellLink(rule.spellID))
-	end
 	if rule.spell and rule.spell ~= "" then
 		return select(1, GetSpellLink(rule.spell))
 	end

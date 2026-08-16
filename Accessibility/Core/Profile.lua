@@ -64,9 +64,6 @@ local function sanitizeRule(rule)
 	local spell = asString(rule.spell, "")
 	if spell == "" then return nil end
 
-	local sid = asNumber(rule.spellID, nil)
-	if sid and sid <= 0 then sid = nil end
-
 	local unit = asString(rule.unit, "target")
 	if not Constants.UNIT_TOKENS[unit] then
 		unit = "target"
@@ -75,7 +72,6 @@ local function sanitizeRule(rule)
 	local clean = {
 		name = asString(rule.name, spell),
 		spell = spell,
-		spellID = sid,
 		enabled = asBool(rule.enabled, true),
 		unit = unit,
 		conditions = {},
@@ -232,7 +228,7 @@ end
 -- RULE_FIELDS lists every scalar field a rule carries, in the order a copy
 -- must reproduce them. copyRule walks it so a new field is copied without a
 -- second edit here. conditions is a list and is deep-copied separately.
-local RULE_FIELDS = { "name", "spell", "spellID", "enabled", "unit" }
+local RULE_FIELDS = { "name", "spell", "enabled", "unit" }
 
 -- copyRule deep-copies one rule (conditions included), stripping the derived
 -- compile cache the "lua" condition type stores on its table. The cache keys
@@ -332,7 +328,6 @@ function Profile.addRule(rotation)
 	rotation.rules[#rotation.rules + 1] = {
 		name = "",
 		spell = "",
-		spellID = nil,
 		enabled = true,
 		unit = "target",
 		conditions = {},

@@ -258,14 +258,14 @@ end
 -- numbers pass through, not %q'd
 do
 	clearScripts()
-	Compatibility.Call("return CastSpellByID(%d)", 8921)
-	eq("number passes through", scripts[1], "return CastSpellByID(8921)")
+	Compatibility.Call("return UseAction(%d)", 7)
+	eq("number passes through", scripts[1], "return UseAction(7)")
 end
 
 -- self-cast uses the player unit
 do
 	clearScripts()
-	Compatibility.Cast("Renew", nil, true)
+	Compatibility.Cast("Renew", true)
 	eq("self cast template", scripts[1], 'return CastSpellByName("Renew", "player")')
 end
 
@@ -309,11 +309,9 @@ do
 	-- verifyShape: a known spell with the documented shape passes
 	ok("verifyShape true on a known spell", ns.Spell.verifyShape() == true)
 
-	-- Link resolution: stored ID wins; a name resolves via GetSpellLink;
-	-- no usable spell returns nil
+	-- Link resolution: a name resolves via GetSpellLink; no usable spell nil
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, testLink = "spell:133" })
 	eq("Link from name", SpellPicker.Link({ spell = "Fireball" }), "spell:133")
-	eq("Link stored ID wins", SpellPicker.Link({ spell = "Fireball", spellID = 999 }), "spell:999")
 	eq("Link nil without spell", SpellPicker.Link({}), nil)
 	eq("Link nil with empty name", SpellPicker.Link({ spell = "" }), nil)
 
@@ -333,10 +331,10 @@ do
 		pulseInterval = -5,
 		gcdProbeSpell = 123,
 		rules = {
-		{ spell = "Fireball", enabled = false, unit = "banana", spellID = "42", conditions = { { type = "target_type", value = "enemy" }, { type = "nope" } } },
+		{ spell = "Fireball", enabled = false, unit = "banana", conditions = { { type = "target_type", value = "enemy" }, { type = "nope" } } },
 			{ spell = "", enabled = true },
 			"garbage",
-			{ spell = "Renew", spellID = -3 },
+			{ spell = "Renew" },
 		},
 		button = { scale = 99, x = "0", locked = 1 },
 	}
@@ -357,11 +355,9 @@ do
 	eq("rule spell kept", r1.spell, "Fireball")
 	eq("rule enabled coerced", r1.enabled, false)
 	eq("rule unit defaulted", r1.unit, "target")
-	eq("rule spellID coerced", r1.spellID, 42)
 	eq("condition count (unknown dropped)", #r1.conditions, 1)
 	eq("condition type kept", r1.conditions[1].type, "target_type")
 
-	eq("second rule spellID dropped (negative)", rules[2].spellID, nil)
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
 	eq("button enabled defaulted", p.button.enabled, true)
@@ -486,7 +482,7 @@ local function resetRotation()
 	setSpell("probe", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
 	setUnit("player", { exists = true, dead = false })
 	setUnit("target", { exists = true, dead = false, hostile = true, health = 100, maxHealth = 100 })
-	setRules({ { name = "", spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} } })
+	setRules({ { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } })
 	Compatibility.Recheck()
 	clearScripts()
 end
@@ -554,8 +550,8 @@ ok("cast succeeds after the anti-spam window", Rotation.CastBest() == true)
 -- priority walk: a blocked first rule must yield to the next
 resetRotation()
 setRules({
-	{ spell = "Blocked", spellID = nil, enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
-	{ spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} },
+	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
 })
 state.inCombat = false
 clearScripts()
@@ -565,8 +561,8 @@ ok("walk cast the second rule", scripts[1] == 'return CastSpellByName("Fireball"
 -- priority walk: the first passing rule wins, the walk stops
 resetRotation()
 setRules({
-	{ spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} },
-	{ spell = "Renew", spellID = nil, enabled = true, unit = "target", conditions = {} },
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
+	{ spell = "Renew", enabled = true, unit = "target", conditions = {} },
 })
 clearScripts()
 ok("walk casts the first passing rule", Rotation.CastBest() == true)
@@ -577,8 +573,8 @@ ok("the first rule won", scripts[1] == 'return CastSpellByName("Fireball")')
 -- first rule does not pin a stale icon
 resetRotation()
 setRules({
-	{ spell = "Blocked", spellID = nil, enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
-	{ spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} },
+	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
 })
 state.inCombat = false
 ok("NextRule skips a blocked rule", Rotation.NextRule() ~= nil)
@@ -586,8 +582,8 @@ ok("NextRule returns the passing rule", Rotation.NextRule().spell == "Fireball")
 
 resetRotation()
 setRules({
-	{ spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
-	{ spell = "Renew", spellID = nil, enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Renew", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
 })
 state.inCombat = false
 ok("NextRule nil when every rule blocked", Rotation.NextRule() == nil)
@@ -656,15 +652,6 @@ do
 	eq("stripRank single rank", Spell.stripRank("Fireball (Rank 2)"), "Fireball")
 	eq("stripRank multi rank", Spell.stripRank("Fireball (Ranks 2-3)"), "Fireball")
 	eq("stripRank leaves plain name", Spell.stripRank("Fireball"), "Fireball")
-
-	-- Spell.id: nil when the C_Spell API is absent (the guard), then a
-	-- working resolve once the backported API is faked.
-	eq("Spell.id nil without C_Spell", Spell.id("Fireball"), nil)
-	fake.C_Spell = { GetSpellID = function(_, name) if name == "Fireball" then return 680282 end return nil end }
-	eq("Spell.id resolves a known name", Spell.id("Fireball"), 680282)
-	eq("Spell.id nil for an unknown name", Spell.id("Nope"), nil)
-	eq("Spell.id nil for an empty name", Spell.id(""), nil)
-	fake.C_Spell = nil
 end
 -- ---------------------------------------------------------------------------
 -- Cooldown helper tests
@@ -695,7 +682,7 @@ end
 
 do
 	-- start from a clean profile with the new schema
-	prof().rotations = { { name = "Single", rules = { { spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} } } } }
+	prof().rotations = { { name = "Single", rules = { { spell = "Fireball", enabled = true, unit = "target", conditions = {} } } } }
 	prof().active = "Single"
 
 	ok("activeRules resolves the active rotation", Profile.activeRules() == prof().rotations[1].rules)
@@ -744,7 +731,7 @@ do
 	eq("deleteRotation shrinks list", #prof().rotations, 1)
 
 	-- rule reorder within a rotation
-	local rotation = { name = "R", rules = { { spell = "One", spellID = nil, enabled = true, unit = "target", conditions = {} }, { spell = "Two", spellID = nil, enabled = true, unit = "target", conditions = {} }, { spell = "Three", spellID = nil, enabled = true, unit = "target", conditions = {} } } }
+	local rotation = { name = "R", rules = { { spell = "One", enabled = true, unit = "target", conditions = {} }, { spell = "Two", enabled = true, unit = "target", conditions = {} }, { spell = "Three", enabled = true, unit = "target", conditions = {} } } }
 	Profile.moveRule(rotation, 1, 3)
 	eq("moveRule reorders", rotation.rules[3].spell, "One")
 	eq("moveRule shifts middle", rotation.rules[1].spell, "Two")
@@ -758,7 +745,7 @@ end
 
 do
 	prof().rotations = {
-		{ name = "Single", rules = { { name = "", spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} } } },
+		{ name = "Single", rules = { { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } } },
 		{ name = "AoE", rules = {} },
 	}
 	prof().active = "Single"
@@ -839,7 +826,7 @@ end
 -- ---------------------------------------------------------------------------
 
 do
-	local rotation = { name = "R", rules = { { name = "", spell = "Fireball", spellID = nil, enabled = true, unit = "target", conditions = {} } } }
+	local rotation = { name = "R", rules = { { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } } }
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends default", #rotation.rules[1].conditions, 1)
 	eq("addCondition default type", rotation.rules[1].conditions[1].type, "target_type")

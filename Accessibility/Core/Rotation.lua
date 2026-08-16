@@ -34,11 +34,6 @@ local lastAttemptTime = 0   -- time of last attempt (GCD fallback)
 -- The result of the last emitted cast, for the status command.
 Rotation.lastResult = { spell = nil, ok = nil, value = nil, err = nil }
 
--- spellReference returns the name-or-ID a rule casts with.
-local function spellReference(rule)
-	return SpellPicker.Ref(rule.spellID, rule.spell)
-end
-
 -- IsOnGCD returns true while the global cooldown is active. It probes a known
 -- spell when one is configured; otherwise it uses the last-cast time.
 function Rotation.IsOnGCD()
@@ -63,18 +58,18 @@ local function RulePasses(rule)
 		return false
 	end
 
-	-- gate 3: the spell must be known (skip when a numeric ID is set)
-	if not (rule.spellID and rule.spellID > 0) and not SpellPicker.IsKnown(rule.spell) then
+	-- gate 3: the spell must be known
+	if not SpellPicker.IsKnown(rule.spell) then
 		return false
 	end
 
 	-- gate 4: the spell must be usable
-	local usable, noMana = Spell.usable(spellReference(rule))
+	local usable, noMana = Spell.usable(rule.spell)
 	if not usable or noMana then return false end
 
 	-- gate 5: the spell's own cooldown must be up. The global cooldown is
 	-- handled by the GCD gate, not here.
-	local start, duration = Spell.cooldown(spellReference(rule))
+	local start, duration = Spell.cooldown(rule.spell)
 	if Cooldown.isOwnCooldown(start, duration) then
 		-- a real cooldown is running: clear the anti-spam marker, the cooldown
 		-- gate already spaces this spell
@@ -84,7 +79,7 @@ local function RulePasses(rule)
 
 	-- gate 7: the target must be in range (skip for self-cast)
 	if unit ~= "player" then
-		if not Spell.inRange(spellReference(rule), unit) then return false end
+		if not Spell.inRange(rule.spell, unit) then return false end
 	end
 
 	-- gate 8: every condition must pass
@@ -101,11 +96,10 @@ local function RulePasses(rule)
 	-- and would otherwise block the re-send, breaking the queue. Anti-spam
 	-- therefore only gates instant spells, and never a re-send of the spell
 	-- currently being cast or channelled (that is a queue, not spam).
-	local ref = spellReference(rule)
-	local castMs = Spell.castTime(ref)
+	local castMs = Spell.castTime(rule.spell)
 	local castName = Cast.currentCast()
 	if castName then castName = Spell.stripRank(castName) end
-	local refName = (type(ref) == "number") and Spell.name(ref) or Spell.stripRank(ref)
+	local refName = Spell.stripRank(rule.spell)
 	if not (castMs and castMs > 0) and castName ~= refName then
 		local t = lastCastAt[rule.spell]
 		if t and (GetTime() - t) < ANTI_SPAM_WINDOW then return false end
@@ -124,8 +118,7 @@ local function Emit(rule)
 	lastCastAt[rule.spell] = now
 	lastAttemptTime = now
 
-	local ok, value, err = Compatibility.Cast(rule.spell, rule.spellID, selfCast)
-	Rotation.lastResult = { spell = rule.spell, ok = ok, value = value, err = err }
+	local ok, value, err = Compatibility.Cast(rule.spell, selfCast)
 	return ok, value, err
 end
 

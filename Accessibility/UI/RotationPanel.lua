@@ -26,8 +26,7 @@ local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
 local ContentInset = ns.ContentInset
 local Config = ns.Config
-local Spell = ns.Spell
-assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and Spell,
+assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config,
 	"load order: UI/RotationPanel before its dependencies")
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -215,8 +214,7 @@ end
 
 -- ruleCard builds one rule card: title bar with ▲/▼/Delete buttons, main
 -- options, and a Conditions section. Control widths match the old editor:
--- Enabled half, Label full, Spell full, Spell ID half, Target unit half,
--- Conditions full.
+-- Enabled half, Label full, Spell full, Target unit half, Conditions full.
 local function ruleCard(panel, rotation, ruleIndex, container)
 	local rule = rotation.rules[ruleIndex]
 	local rules = rotation.rules
@@ -263,56 +261,16 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		rule.name = value
 	end)
 	card:AddChild(labelInput)
-	local spellIdInput
-	local syncing = false
 	local spellDropdown = AceGUI:Create("Dropdown")
 	spellDropdown:SetLabel("Spell")
 	spellDropdown:SetFullWidth(true)
 	spellDropdown:SetList(spellValues(rule))
 	spellDropdown:SetValue(rule.spell or "")
 	spellDropdown:SetCallback("OnValueChanged", function(_, _, value)
-		if syncing then return end
-		syncing = true
 		rule.spell = value
-		rule.spellID = Spell.id(value)
-		spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
-		syncing = false
 		panel:NotifyPanelChanged()
 	end)
 	card:AddChild(spellDropdown)
-
-	spellIdInput = AceGUI:Create("EditBox")
-	spellIdInput:SetLabel("Spell ID (optional)")
-	spellIdInput:SetRelativeWidth(0.5)
-	spellIdInput:SetText(rule.spellID and tostring(rule.spellID) or "")
-	spellIdInput:SetCallback("OnEnterPressed", function(_, _, value)
-		if syncing then return end
-		syncing = true
-		rule.spellID = tonumber(value)
-		-- resolve the ID back to a name so the dropdown stays in sync, and
-		-- warn when the ID disagrees with the stored name
-		if rule.spellID and rule.spellID > 0 then
-			local resolved = Spell.name(rule.spellID)
-			if resolved then
-				if rule.spell and rule.spell ~= "" and rule.spell ~= resolved then
-					DEFAULT_CHAT_FRAME:AddMessage(("Accessibility: spell ID %d is %q, not %q"):format(
-						rule.spellID, resolved, rule.spell))
-				end
-				rule.spell = resolved
-				if SpellPicker.IsKnown(resolved) then
-					spellDropdown:SetValue(resolved)
-				else
-					spellDropdown:SetValue("")
-				end
-			else
-				rule.spell = ""
-				spellDropdown:SetValue("")
-			end
-		end
-		syncing = false
-		panel:NotifyPanelChanged()
-	end)
-	card:AddChild(spellIdInput)
 
 	local unitDropdown = AceGUI:Create("Dropdown")
 	unitDropdown:SetLabel("Target unit")

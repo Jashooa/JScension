@@ -27,8 +27,7 @@ local autoButton = nil
 
 -- spellReady returns true when the rule's spell is usable and off cooldown.
 local function spellReady(rule)
-	local ref = SpellPicker.Ref(rule.spellID, rule.spell)
-	return Cooldown.isReady(ref)
+	return Cooldown.isReady(rule.spell)
 end
 
 -- Refresh updates the icon and the ready border. The icon shows the spell a

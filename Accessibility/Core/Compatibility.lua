@@ -87,14 +87,9 @@ end
 -- secure-function wrappers
 -- ---------------------------------------------------------------------------
 
--- Cast runs CastSpellByName or CastSpellByID under the trusted owner.
--- name:    the exact spell name.
--- id:      an optional numeric ID. nil or 0 means "use the name".
--- selfCast: true casts on the player.
-function Compatibility.Cast(name, id, selfCast)
-	if id and id > 0 then
-		return Compatibility.Call("return CastSpellByID(%d)", id)
-	end
+-- Cast runs CastSpellByName under the trusted owner. name is the exact spell
+-- name; selfCast casts on the player.
+function Compatibility.Cast(name, selfCast)
 	if selfCast then
 		return Compatibility.Call('return CastSpellByName(%s, "player")', name)
 	end
