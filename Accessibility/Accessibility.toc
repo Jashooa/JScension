@@ -27,7 +27,7 @@ Core\Config.lua
 Core\Slash.lua
 
 UI\Widgets\ContentInset.lua
-UI\Widgets\TextInput.lua
+UI\Widgets\Fields.lua
 UI\Widgets\TitleButtonGroup.lua
 UI\RotationButton.lua
 

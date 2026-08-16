@@ -26,8 +26,8 @@ local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
 local ContentInset = ns.ContentInset
 local Config = ns.Config
-local TextInput = ns.TextInput
-assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and TextInput,
+local Fields = ns.Fields
+assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and Fields,
 	"load order: UI/RotationPanel before its dependencies")
 local Type, Version = "RotationPanel", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -87,58 +87,40 @@ local function conditionTypeValues()
 	return values
 end
 
--- dropdownField builds a dropdown bound to one condition field.
-local function dropdownField(condition, field, name, values, initial)
-	local dropdown = AceGUI:Create("Dropdown")
-	dropdown:SetLabel(name)
-	dropdown:SetList(values)
-	dropdown:SetValue(initial)
-	dropdown:SetCallback("OnValueChanged", function(_, _, value)
-		condition[field] = value
-	end)
-	return dropdown
-end
-
 -- conditionField renders one registry-declared field as the right AceGUI widget.
 local function conditionField(condition, field, fieldType)
 	local name = field:gsub("_", " ")
 	if fieldType == "number" then
-		local slider = AceGUI:Create("Slider")
-		slider:SetLabel(name)
-		slider:SetSliderValues(0, 100, 1)
-		slider:SetValue(condition[field] or 0)
-		slider:SetCallback("OnValueChanged", function(_, _, value)
+		return Fields.Slider(name, 0, 100, 1, condition[field] or 0, function(value)
 			condition[field] = value
 		end)
-		return slider
 	elseif fieldType == "op" then
-		return dropdownField(condition, field, name, Conditions.Ops, condition[field] or "<")
+		return Fields.Dropdown(name, Conditions.Ops, condition[field] or "<", function(value)
+			condition[field] = value
+		end)
 	elseif fieldType == "unit" then
-		return dropdownField(condition, field, name, Conditions.Units, condition[field] or "target")
+		return Fields.Dropdown(name, Conditions.Units, condition[field] or "target", function(value)
+			condition[field] = value
+		end)
 	elseif fieldType == "kind" then
-		return dropdownField(condition, field, name, Conditions.Kinds, condition[field] or "buff")
+		return Fields.Dropdown(name, Conditions.Kinds, condition[field] or "buff", function(value)
+			condition[field] = value
+		end)
 	elseif fieldType == "target_type" then
-		return dropdownField(condition, field, name, Conditions.TargetTypes, condition[field] or "enemy")
+		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field] or "enemy", function(value)
+			condition[field] = value
+		end)
 	elseif fieldType == "bool" then
-		local check = AceGUI:Create("CheckBox")
-		check:SetLabel(name)
-		check:SetValue(condition[field] == true)
-		check:SetCallback("OnValueChanged", function(_, _, value)
-			condition[field] = value and true or false
+		return Fields.CheckBox(name, condition[field] == true, function(value)
+			condition[field] = value
 		end)
-		return check
 	elseif fieldType == "code" then
-		local edit = AceGUI:Create("MultiLineEditBox")
-		edit:SetLabel(name)
-		edit:SetFullWidth(true)
-		edit:SetText(condition[field] or "")
-		edit:SetCallback("OnEditFocusLost", function()
-			condition[field] = edit.editBox:GetText()
+		return Fields.Multiline(name, condition[field], function(value)
+			condition[field] = value
 		end)
-		return edit
 	else
 		-- "spell", "string", and anything unknown render as a single-line box
-		return TextInput.Build(name, condition[field], function(value)
+		return Fields.Text(name, condition[field], function(value)
 			condition[field] = value
 		end)
 	end
@@ -249,7 +231,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(enabled)
 
-	local labelInput = TextInput.Build("Label", rule.name, function(value)
+	local labelInput = Fields.Text("Label", rule.name, function(value)
 		rule.name = value
 		-- redraw this card's title so the label change is visible immediately;
 		-- empty falls back to the spell name, else "Rule N"
