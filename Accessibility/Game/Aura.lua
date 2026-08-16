@@ -44,6 +44,8 @@ function Aura.find(unit, name, kind, mineOnly)
 	local selfName = mineOnly and UnitName("player") or nil
 
 	for i = 1, Constants.MAX_AURAS do
+		-- UnitBuff/UnitDebuff return (name, rank, icon, count, dispelType,
+		-- duration, expires, caster, ...) in this client.
 		local aname, _, _, count, _, duration, expires, caster = scan(unit, i)
 		if not aname then break end
 		if stripRank(aname):lower() == needle then
