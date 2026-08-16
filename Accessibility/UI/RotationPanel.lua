@@ -259,6 +259,9 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	labelInput:SetText(rule.name or "")
 	labelInput:SetCallback("OnTextChanged", function(_, _, value)
 		rule.name = value
+		-- redraw this card's title so the label change is visible immediately;
+		-- empty falls back to the spell name, else "Rule N"
+		card:SetTitle(ruleTitle(rule, ruleIndex))
 	end)
 	card:AddChild(labelInput)
 	local spellDropdown = AceGUI:Create("Dropdown")
