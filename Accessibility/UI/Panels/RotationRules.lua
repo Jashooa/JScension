@@ -1,6 +1,6 @@
--- The rotation panel widget.
+-- The rotation rules panel.
 --
--- A custom AceGUI container ("RotationPanel") that renders one rotation's
+-- A custom AceGUI container ("RotationRules") that renders one rotation's
 -- rules as cards. The layout mirrors the old declarative AceConfig editor:
 -- every section uses the Flow layout with the same widths (half/full) as the
 -- options it replaces, so the panel looks identical to the previous UI.
@@ -11,7 +11,7 @@
 -- there is no title-key registry and no hidden bytes in titles.
 --
 -- AceConfig renders the panel through a leaf option with
--- `type = "execute", control = "RotationPanel"`. InjectInfo stores the option
+-- `type = "execute", control = "RotationRules"`. InjectInfo stores the option
 -- path in the widget's userdata before AddChild shows the widget, so the
 -- panel resolves its rotation from that path and renders on first OnShow.
 
@@ -28,8 +28,8 @@ local ContentInset = ns.ContentInset
 local Config = ns.Config
 local Fields = ns.Fields
 assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and Fields,
-	"load order: UI/RotationPanel before its dependencies")
-local Type, Version = "RotationPanel", 1
+	"load order: UI/Panels/RotationRules before its dependencies")
+local Type, Version = "RotationRules", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
 
 -- ---------------------------------------------------------------------------

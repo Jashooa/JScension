@@ -4,7 +4,7 @@
 -- a fake Compatibility global, then runs assertions against the observable
 -- contracts: profile sanitization, conditions, the rotation engine, the
 -- spellbook, and the Compatibility script seam. The AceGUI widgets
--- (RotationButton, RotationPanel, TitleButtonGroup) are not loaded: their
+-- (RotationButton, RotationRules, RotationSettings, TitleButtonGroup) are not loaded: their
 -- contracts are frame layout and mouse behaviour, which no harness fake can
 -- verify - they are exercised in-game.
 
@@ -929,22 +929,21 @@ do
 	ok("inactive rotation plain", rotGroup.args.rotation2.name() == "AoE")
 	ok("rotation has no icon", rotGroup.args.rotation1.icon == nil)
 
-	-- rotation content: a settings section, then the RotationPanel widget
-	-- that renders the rule cards (the declarative rule/condition groups are
-	-- gone; the panel is one execute leaf carrying the rotation reference)
-	ok("rotation has settings section", rotGroup.args.rotation1.args.settings ~= nil)
-	ok("settings section inline", rotGroup.args.rotation1.args.settings.inline == true)
-	local panelOption = rotGroup.args.rotation1.args.rotationPanel
-	ok("rotation panel option present", panelOption ~= nil)
-	ok("panel is the custom widget", panelOption.control == "RotationPanel")
+	-- rotation content: a RotationSettings control for name/buttons, then a
+	-- RotationRules control that renders the rule cards.
+	ok("rotation has settings control", rotGroup.args.rotation1.args.settings ~= nil)
+	ok("settings is RotationSettings", rotGroup.args.rotation1.args.settings.control == "RotationSettings")
+	local panelOption = rotGroup.args.rotation1.args.rotationRules
+	ok("rotation rules option present", panelOption ~= nil)
+	ok("panel is the custom widget", panelOption.control == "RotationRules")
 	ok("panel is an execute leaf", panelOption.type == "execute")
 	ok("panel option has no custom fields", panelOption.rotation == nil and panelOption.func == nil)
 	ok("no declarative rules group", rotGroup.args.rotation1.args.rules == nil)
 	ok("no rule cards in the tree", rotGroup.args.rotation1.args.rule1 == nil)
 
 	-- each rotation gets its own panel bound to its own rotation
-	local panelTwo = rotGroup.args.rotation2.args.rotationPanel
-	ok("rotation2 panel present", panelTwo ~= nil and panelTwo.control == "RotationPanel")
+	local panelTwo = rotGroup.args.rotation2.args.rotationRules
+	ok("rotation2 panel present", panelTwo ~= nil and panelTwo.control == "RotationRules")
 
 	-- general options live on the Rotations page, above its sub-tree
 	ok("no root general options", opts.args.auto == nil and opts.args.general == nil)
@@ -965,24 +964,22 @@ do
 	Config.Open()
 	ok("Rotations tree starts expanded", _G.__dialogStatus.groups ~= nil and _G.__dialogStatus.groups.rotations == true)
 
-	-- rotation settings layout: rename first, then the three action buttons
-	local s = rotGroup.args.rotation1.args.settings.args
-	ok("rename is first", s.rename.order == 1)
-	ok("setActive second", s.setActive.order == 2)
-	ok("duplicate third", s.duplicate.order == 3)
-	ok("delete fourth", s.delete.order == 4)
+	-- settings is now a RotationSettings control (the button layout lives
+	-- inside the widget, not in the AceConfig args tree). Actions are tested
+	-- via direct Profile calls since the widget is not loaded in the harness.
+	ok("settings is RotationSettings", rotGroup.args.rotation1.args.settings.control == "RotationSettings")
+	ok("settings is execute leaf", rotGroup.args.rotation1.args.settings.type == "execute")
 
-	-- actions mutate the profile; rebuild to get fresh closures (the tree is
-	-- rebuilt by NotifyChange in game, so stale closures never run)
-	rotGroup.args.rotation1.args.settings.args.setActive.func()
-	eq("setActive via tree", prof().active, "Single")
-	rotGroup.args.rotation1.args.settings.args.duplicate.func()
-	eq("duplicate via tree", #prof().rotations, 3)
+	-- actions mutate the profile; test via Profile directly
+	local single = prof().rotations[1]
+	Profile.setActive(single)
+	eq("setActive via Profile", prof().active, "Single")
+	Profile.duplicateRotation(single)
+	eq("duplicate via Profile", #prof().rotations, 3)
+	Profile.deleteRotation(prof().rotations[3])
+	eq("delete via Profile", #prof().rotations, 2)
 	rotGroup = Config.BuildOptions().args.rotations
-	rotGroup.args.rotation2.args.settings.args.delete.func()
-	eq("delete via tree", #prof().rotations, 2)
-	rotGroup = Config.BuildOptions().args.rotations
-	ok("panel rebuilt after rotation change", rotGroup.args.rotation1.args.rotationPanel ~= nil)
+	ok("panel rebuilt after rotation change", rotGroup.args.rotation1.args.rotationRules ~= nil)
 end
 
 -- ---------------------------------------------------------------------------

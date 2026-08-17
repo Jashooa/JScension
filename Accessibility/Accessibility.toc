@@ -27,11 +27,14 @@ Core\Rotation.lua
 Core\Config.lua
 Core\Slash.lua
 
+UI\Layouts\Grid.lua
+
 UI\Widgets\ContentInset.lua
 UI\Widgets\Fields.lua
 UI\Widgets\TitleButtonGroup.lua
 UI\RotationButton.lua
-UI\RotationPanel.lua
+UI\Panels\RotationSettings.lua
+UI\Panels\RotationRules.lua
 
 Accessibility.lua
 

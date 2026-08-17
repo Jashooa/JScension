@@ -1,7 +1,7 @@
 -- ContentInset: the shared width/height handlers for the two custom AceGUI
 -- containers.
 --
--- TitleButtonGroup and RotationPanel both keep their content frame inset by
+-- TitleButtonGroup and RotationRules both keep their content frame inset by
 -- a fixed amount on each side, clamped to zero. The handlers are identical
 -- in both, so they live here once and each widget references them directly.
 

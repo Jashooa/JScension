@@ -55,52 +55,19 @@ end
 -- become tree nodes.
 local function rotationGroup(rotation, index)
 	local args = {
+		-- the settings (name, set active, duplicate, delete) are rendered by
+		-- the RotationSettings widget. The widget finds its rotation from its
+		-- option path (InjectInfo stores it in userdata).
 		settings = {
-			type = "group", name = "Settings", inline = true, order = 1,
-			args = {
-				rename = {
-					type = "input", name = "Name", width = "full",
-					order = 1,
-					get = function() return rotation.name end,
-					set = function(_, v)
-						Profile.renameRotation(rotation, v)
-						Config.NotifyOptionsChanged()
-					end,
-				},
-				setActive = {
-					type = "execute", name = "Set active", width = "full",
-					order = 2,
-					disabled = function() return Profile.current().active == rotation.name end,
-					func = function()
-						Profile.setActive(rotation)
-						Config.NotifyOptionsChanged()
-					end,
-				},
-				duplicate = {
-					type = "execute", name = "Duplicate", width = "full",
-					order = 3,
-					func = function()
-						Profile.duplicateRotation(rotation)
-						Config.NotifyOptionsChanged()
-					end,
-				},
-				delete = {
-					type = "execute", name = "Delete", width = "full",
-					order = 4,
-					disabled = function() return #Profile.rotations() <= 1 end,
-					func = function()
-						Profile.deleteRotation(rotation)
-						Config.NotifyOptionsChanged()
-					end,
-				},
-			},
+			type = "execute", name = "", control = "RotationSettings",
+			width = "full", order = 1,
 		},
-		-- the rule cards are rendered by the RotationPanel widget. The widget
+		-- the rule cards are rendered by the RotationRules widget. The widget
 		-- finds its rotation from its option path (InjectInfo stores it in
 		-- userdata), so the option carries no custom fields (AceConfig rejects
 		-- unknown parameters).
-		rotationPanel = {
-			type = "execute", name = "", control = "RotationPanel",
+		rotationRules = {
+			type = "execute", name = "", control = "RotationRules",
 			width = "full", order = 2,
 		},
 	}
