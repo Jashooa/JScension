@@ -112,13 +112,12 @@ end
 -- gates. It stores the result for the status command.
 local function Emit(rule)
 	local unit = rule.unit or "target"
-	local selfCast = (unit == "player")
 	local now = GetTime()
 
 	lastCastAt[rule.spell] = now
 	lastAttemptTime = now
 
-	local ok, value, err = Compatibility.Cast(rule.spell, selfCast)
+	local ok, value, err = Compatibility.Cast(rule.spell, unit)
 	return ok, value, err
 end
 

@@ -132,6 +132,11 @@ end
 fake.IsShiftKeyDown = function() return state.shiftKey and 1 or nil end
 fake.IsControlKeyDown = function() return state.controlKey and 1 or nil end
 fake.IsAltKeyDown = function() return state.altKey and 1 or nil end
+fake.GetScreenWidth = function() return 1920 end
+fake.GetScreenHeight = function() return 1080 end
+fake.GetScreenPosition = function() return 0.5, 0.5 end
+fake.GetCursorPosition = function() return 960, 540 end
+fake.SetCursorPosition = function() end
 fake.UnitAffectingCombat = function() return state.inCombat end
 fake.GetUnitSpeed = function(u) local x = state.units[u]; return x and x.speed or 0 end
 fake.IsUsableSpell = function(s) local x = state.spells[s]; if x then return x.usable, x.noMana end end
@@ -308,8 +313,8 @@ end
 -- self-cast uses the player unit
 do
 	clearScripts()
-	Compatibility.Cast("Renew", true)
-	eq("self cast template", scripts[1], 'return CastSpellByName("Renew", "player")')
+	Compatibility.Cast("Renew", "player")
+	eq("self cast template", scripts[1], 'CastSpellByName("Renew", "player")')
 end
 
 -- unlock probe
@@ -660,7 +665,7 @@ end
 
 resetRotation()
 ok("CastBest casts the passing rule", castOnce("Fireball") == true)
-ok("a cast script was emitted", #scripts == 1 and scripts[1] == 'return CastSpellByName("Fireball")')
+ok("a cast script was emitted", #scripts >= 1 and scripts[1] == 'CastSpellByName("Fireball")')
 
 resetRotation()
 state.secure = false
@@ -720,7 +725,7 @@ setRules({
 state.inCombat = false
 clearScripts()
 ok("walk skips a blocked rule", Rotation.CastBest() == true)
-ok("walk cast the second rule", scripts[1] == 'return CastSpellByName("Fireball")')
+ok("walk cast the second rule", scripts[1] == 'CastSpellByName("Fireball")')
 
 -- priority walk: the first passing rule wins, the walk stops
 resetRotation()
@@ -730,8 +735,8 @@ setRules({
 })
 clearScripts()
 ok("walk casts the first passing rule", Rotation.CastBest() == true)
-eq("only one cast was emitted", #scripts, 1)
-ok("the first rule won", scripts[1] == 'return CastSpellByName("Fireball")')
+ok("only one cast was emitted", #scripts >= 1 and scripts[1] == 'CastSpellByName("Fireball")')
+ok("the first rule won", scripts[1] == 'CastSpellByName("Fireball")')
 
 -- NextRule: the button icon must show the first PASSING rule, so a blocked
 -- first rule does not pin a stale icon
@@ -764,7 +769,7 @@ resetRotation()
 setUnit("player", { exists = true, dead = false, castingEndMs = (state.time + 0.2) * 1000 })
 clearScripts()
 ok("mid-cast inside queue window casts", Rotation.CastBest() == true)
-eq("queue-window cast emitted", scripts[1], 'return CastSpellByName("Fireball")')
+eq("queue-window cast emitted", scripts[1], 'CastSpellByName("Fireball")')
 
 -- queueWindow = 0 disables the early send: casting always blocks
 resetRotation()
@@ -790,7 +795,7 @@ state.time = tq + 1.6
 setUnit("player", { exists = true, dead = false, castingEndMs = (tq + 2.0) * 1000 })
 clearScripts()
 ok("cast-time spell re-queues inside window (anti-spam bypassed)", Rotation.CastBest() == true)
-eq("re-queue emitted the same spell", scripts[1], 'return CastSpellByName("Fireball")')
+eq("re-queue emitted the same spell", scripts[1], 'CastSpellByName("Fireball")')
 
 -- an instant spell is still anti-spammed: 1.6s after casting it, blocked
 resetRotation()

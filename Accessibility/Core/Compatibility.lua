@@ -87,13 +87,41 @@ end
 -- secure-function wrappers
 -- ---------------------------------------------------------------------------
 
--- Cast runs CastSpellByName under the trusted owner. name is the exact spell
--- name; selfCast casts on the player.
-function Compatibility.Cast(name, selfCast)
-	if selfCast then
-		return Compatibility.Call('return CastSpellByName(%s, "player")', name)
+-- CastGround places a pending ground-target spell at a unit's on-screen
+-- position. Each protected call runs through Compatibility.Call separately.
+function Compatibility.CastGround(spell, unit)
+	local w, h = GetScreenWidth(), GetScreenHeight()
+	local aspect = w / h
+	local d = math.sqrt(w * w + h * h)
+
+	-- save cursor (base UI space → per-axis fraction)
+	local scx, scy = GetCursorPosition()
+	local savedX = scx / (768 * aspect)
+	local savedY = scy / 768
+
+	-- target screen position (diagonal-normalised → per-axis fraction)
+	local tx, ty = GetScreenPosition(unit)
+	local gx = tx * d / w
+	local gy = ty * d / h
+
+	SetCursorPosition(gx, gy)
+	Compatibility.Call("CameraOrSelectOrMoveStart()")
+	Compatibility.Call("CameraOrSelectOrMoveStop()")
+	SetCursorPosition(savedX, savedY)
+end
+
+-- Cast runs CastSpellByName under the trusted owner. unit is the target
+-- unit token ("player" for self-cast). If the spell opens a ground-
+-- targeting cursor, CastGround resolves it at the unit's position.
+function Compatibility.Cast(spell, unit)
+	if unit == "player" then
+		return Compatibility.Call('CastSpellByName(%s, "player")', spell)
 	end
-	return Compatibility.Call("return CastSpellByName(%s)", name)
+	Compatibility.Call("CastSpellByName(%s)", spell)
+	local isTargeting = Compatibility.Call("return SpellIsTargeting()")
+	if isTargeting then
+		Compatibility.CastGround(spell, unit)
+	end
 end
 
 -- StopCasting stops the current cast.
