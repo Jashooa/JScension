@@ -2,7 +2,8 @@
 --
 -- Children fill row by row. A child with child:SetUserData("colspan", N)
 -- spans extra columns. Rows size to their tallest child, so mixed widget
--- heights stay aligned.
+-- heights stay aligned. Content is vertically centered when the container
+-- is taller than the content.
 --
 -- Usage:
 --   container:SetUserData("columns", 3)      -- default 2
@@ -21,18 +22,48 @@ AceGUI:RegisterLayout("Grid", function(content, children)
 	if totalW <= 0 then totalW = content.width or 300 end
 	local cellW = (totalW - padH * (cols - 1)) / cols
 
-	local x, y = 0, 0
-	local col = 1
-	local rowH = 0
+	-- first pass: calculate row heights so we can vertically center
+	local rows = {}
+	local rowH, col = 0, 1
+	for i = 1, #children do
+		local child = children[i]
+		local span = child:GetUserData("colspan") or 1
+		if span > cols then span = cols end
+		if col + span - 1 > cols then
+			rows[#rows + 1] = rowH
+			rowH, col = 0, 1
+		end
+		local h = child.frame:GetHeight() or 0
+		if h > rowH then rowH = h end
+		col = col + span
+	end
+	rows[#rows + 1] = rowH
+
+	local totalH = 0
+	for i = 1, #rows do totalH = totalH + rows[i] end
+	totalH = totalH + padV * (#rows - 1)
+
+	-- vertically center when the container is taller than the content
+	local containerH = content:GetHeight() or 0
+	local startY = 0
+	if containerH > totalH then
+		startY = (containerH - totalH) / 2
+	end
+
+	-- second pass: position children
+	local x, y = 0, startY
+	local row = 1
+	col = 1
+	rowH = 0
 
 	for i = 1, #children do
 		local child = children[i]
 		local span = child:GetUserData("colspan") or 1
 		if span > cols then span = cols end
 
-		-- wrap if this child does not fit in the current row
 		if col + span - 1 > cols then
 			y = y + rowH + padV
+			row = row + 1
 			x, col, rowH = 0, 1, 0
 		end
 
@@ -52,8 +83,7 @@ AceGUI:RegisterLayout("Grid", function(content, children)
 	end
 
 	-- report used height so scrollframes and parent groups size correctly
-	local total = y + rowH
 	if content.obj.LayoutFinished then
-		content.obj:LayoutFinished(nil, total)
+		content.obj:LayoutFinished(nil, totalH)
 	end
 end)
