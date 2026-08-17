@@ -8,7 +8,7 @@
 -- Field types:
 --   unit        a unit ID (player, target, focus, pet, mouseover)
 --   op          a comparison operator (<, <=, >, >=, ==, ~=)
---   number      a numeric value
+--   percent     a bounded 0-100 value; rendered as a slider
 --   spell       a spell name or numeric ID
 --   string      a free string (an aura name)
 --   kind        "buff" or "debuff"
@@ -18,8 +18,8 @@
 --   modifier    shift, control, or alt
 --   power       a power pool (mana, rage, focus, energy, runic); nil uses
 --               the unit's current pool
---   raw         an unbounded numeric value (not a 0-100 percent); rendered
---               as a text input so large values like 30000 are reachable
+--   number      an unbounded numeric value; rendered as a text input so
+--               large values like 30000 are reachable
 --   code        a Lua snippet that returns true or false
 --
 -- eval must never error: it runs many times a second inside combat. The
@@ -90,7 +90,7 @@ register("unit_target_type", {
 
 register("unit_health_percent", {
 	label = "Health percent",
-	fields = { unit = "unit", op = "op", value = "number" },
+	fields = { unit = "unit", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("%s health %s %s%%"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
 	end,
@@ -105,7 +105,7 @@ register("unit_health", {
 	label = "Health (raw value)",
 	-- raw is an unbounded number (not a 0-100 percent), rendered as a text
 	-- input so values like 30000 are reachable
-	fields = { unit = "unit", op = "op", value = "raw" },
+	fields = { unit = "unit", op = "op", value = "number" },
 	describe = function(condition)
 		return ("%s health %s %s"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
 	end,
@@ -118,7 +118,7 @@ register("unit_health", {
 
 register("unit_power_percent", {
 	label = "Power percent",
-	fields = { unit = "unit", power = "power", op = "op", value = "number" },
+	fields = { unit = "unit", power = "power", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("%s %s %s %s%%"):format(condition.unit or "player", powerName(condition.power),
 			condition.op or ">", tostring(condition.value or 0))
@@ -134,7 +134,7 @@ register("unit_power", {
 	label = "Power (raw value)",
 	-- raw is an unbounded number (not a 0-100 percent), rendered as a text
 	-- input so values like 30000 are reachable
-	fields = { unit = "unit", power = "power", op = "op", value = "raw" },
+	fields = { unit = "unit", power = "power", op = "op", value = "number" },
 	describe = function(condition)
 		return ("%s %s %s %s"):format(condition.unit or "player", powerName(condition.power),
 			condition.op or ">", tostring(condition.value or 0))
@@ -148,7 +148,7 @@ register("unit_power", {
 
 register("unit_aura_present", {
 	label = "Unit has aura",
-	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
+	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
 	describe = function(condition)
 		local base = ("%s has %s"):format(condition.unit or "target", condition.aura or "?")
 		if condition.value and condition.value ~= "" then
@@ -180,7 +180,7 @@ register("unit_aura_missing", {
 
 register("unit_aura_stacks", {
 	label = "Unit aura stack count",
-	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
+	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("%s stacks of %s %s %s"):format(condition.unit or "target", condition.aura or "?",
 			condition.op or ">=", tostring(condition.value or 1))
@@ -224,7 +224,7 @@ register("spell_usable", {
 
 register("spell_cooldown_remaining", {
 	label = "Spell cooldown remaining",
-	fields = { spell = "spell", op = "op", value = "number" },
+	fields = { spell = "spell", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("%s cooldown %s %ss"):format(condition.spell or "?", condition.op or "<", tostring(condition.value or 0))
 	end,
@@ -328,7 +328,7 @@ register("player_combo_points", {
 	label = "Player combo points on target",
 	-- Combo points only ever exist on the player's current target, so the
 	-- unit is fixed to "target" and the condition has no unit field.
-	fields = { op = "op", value = "number" },
+	fields = { op = "op", value = "percent" },
 	describe = function(condition)
 		return ("combo points %s %s"):format(condition.op or ">=", tostring(condition.value or 0))
 	end,
@@ -378,7 +378,7 @@ register("unit_cast_interruptible", {
 
 register("unit_level", {
 	label = "Unit level",
-	fields = { unit = "unit", op = "op", value = "number" },
+	fields = { unit = "unit", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("%s level %s %s"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
 	end,
@@ -416,7 +416,7 @@ register("unit_classification", {
 
 register("unit_threat_percent", {
 	label = "Threat on unit (scaled percent)",
-	fields = { unit = "unit", op = "op", value = "number" },
+	fields = { unit = "unit", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("threat on %s %s %s%%"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
 	end,
@@ -443,7 +443,7 @@ register("unit_is_tanking", {
 
 register("unit_aura_remains", {
 	label = "Unit aura time remaining",
-	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
+	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
 	describe = function(condition)
 		return ("%s has %s with %s %ss left"):format(condition.unit or "target", condition.aura or "?",
 			condition.op or ">", tostring(condition.value or 0))
@@ -581,7 +581,7 @@ function Conditions.Sanitize(condition)
 	local clean = { type = condition.type }
 	for field, fieldType in pairs(def.fields) do
 		local raw = condition[field]
-		if fieldType == "number" or fieldType == "power" or fieldType == "raw" then
+		if fieldType == "percent" or fieldType == "power" or fieldType == "number" then
 			local n = tonumber(raw)
 			if n then clean[field] = n end
 		elseif fieldType == "bool" then

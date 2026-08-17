@@ -90,7 +90,7 @@ end
 -- conditionField renders one registry-declared field as the right AceGUI widget.
 local function conditionField(condition, field, fieldType)
 	local name = field:gsub("_", " ")
-	if fieldType == "number" then
+	if fieldType == "percent" then
 		return Fields.Slider(name, 0, 100, 1, condition[field] or 0, function(value)
 			condition[field] = value
 		end)
@@ -122,7 +122,7 @@ local function conditionField(condition, field, fieldType)
 		return Fields.Dropdown(name, Conditions.Powers, condition[field], function(value)
 			condition[field] = value
 		end)
-	elseif fieldType == "raw" then
+	elseif fieldType == "number" then
 		return Fields.Text(name, tostring(condition[field] or ""), function(value)
 			condition[field] = tonumber(value) or 0
 		end)
