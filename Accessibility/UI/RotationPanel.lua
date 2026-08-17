@@ -139,6 +139,23 @@ local function conditionField(condition, field, fieldType, onChange)
 	end
 end
 
+-- isConditionComplete returns true when every declared field on the
+-- condition has a value (non-nil and non-empty-string). Fields listed in
+-- the registry entry's optional table are allowed to be nil (e.g. power
+-- on power conditions means "current pool"; mine on aura conditions is
+-- false by init, so only nil before the editor opens).
+local function isConditionComplete(condition)
+	local def = Conditions.Registry[Conditions.ResolveType(condition.type)]
+	if not def then return false end
+	for field in pairs(def.fields) do
+		if not (def.optional and def.optional[field]) then
+			local v = condition[field]
+			if v == nil or v == "" then return false end
+		end
+	end
+	return true
+end
+
 -- buildConditionSettings fills the expanded card with the type dropdown and
 -- one control per registry-declared field. Widths match the old editor: the
 -- type is full width, fields keep their default single width.
@@ -182,23 +199,6 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 		-- re-check after init (bool/percent fields may have been set)
 		updateCompleteness()
 	end
-end
-
--- isConditionComplete returns true when every declared field on the
--- condition has a value (non-nil and non-empty-string). Fields listed in
--- the registry entry's optional table are allowed to be nil (e.g. power
--- on power conditions means "current pool"; mine on aura conditions is
--- false by init, so only nil before the editor opens).
-local function isConditionComplete(condition)
-	local def = Conditions.Registry[Conditions.ResolveType(condition.type)]
-	if not def then return false end
-	for field in pairs(def.fields) do
-		if not (def.optional and def.optional[field]) then
-			local v = condition[field]
-			if v == nil or v == "" then return false end
-		end
-	end
-	return true
 end
 
 -- conditionCard builds one condition card: the summary is the title, with
@@ -283,7 +283,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	-- main options
 	local enabled = AceGUI:Create("CheckBox")
 	enabled:SetLabel("Enabled")
-	enabled:SetRelativeWidth(0.5)
+	-- enabled:SetRelativeWidth(0.5)
 	enabled:SetValue(rule.enabled)
 	enabled:SetCallback("OnValueChanged", function(_, _, value)
 		rule.enabled = value
@@ -310,7 +310,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		rule.unit = value
 		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
 	end)
-	unitDropdown:SetRelativeWidth(0.5)
+	-- unitDropdown:SetRelativeWidth(0.5)
 	card:AddChild(unitDropdown)
 
 	-- conditions section: title bar carries the "Add condition" button
