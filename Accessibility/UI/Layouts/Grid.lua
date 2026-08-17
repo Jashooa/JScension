@@ -69,8 +69,14 @@ AceGUI:RegisterLayout("Grid", function(content, children)
 
 		local w = cellW * span + padH * (span - 1)
 		local frame = child.frame
+		local h = frame:GetHeight() or 0
+		-- vertically center within the row when the child is shorter
+		local offsetY = y
+		if rowH > 0 and h < rowH then
+			offsetY = y + (rowH - h) / 2
+		end
 		frame:ClearAllPoints()
-		frame:SetPoint("TOPLEFT", content, "TOPLEFT", x, -y)
+		frame:SetPoint("TOPLEFT", content, "TOPLEFT", x, -offsetY)
 		frame:SetWidth(w)
 		if child.OnWidthSet then child:OnWidthSet(w) end
 		frame:Show()
