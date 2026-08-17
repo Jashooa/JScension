@@ -72,12 +72,12 @@ local methods = {
 
 		local panel = self
 
-		-- name input: spans all 3 columns
+		-- name input
 		local nameInput = Fields.Text("Name", rotation.name, function(value)
 			Profile.renameRotation(rotation, value)
 			Config.NotifyOptionsChanged()
 		end)
-		nameInput:SetUserData("colspan", 3)
+		nameInput:SetFullWidth(true)
 		panel:AddChild(nameInput)
 
 		-- button row: 3 equal columns via Grid layout
@@ -90,6 +90,7 @@ local methods = {
 
 		local setActive = AceGUI:Create("Button")
 		setActive:SetText("Set active")
+		setActive:SetDisabled(Profile.current().active == rotation.name)
 		setActive:SetCallback("OnClick", function()
 			Profile.setActive(rotation)
 			Config.NotifyOptionsChanged()
@@ -106,6 +107,7 @@ local methods = {
 
 		local delete = AceGUI:Create("Button")
 		delete:SetText("Delete")
+		delete:SetDisabled(#Profile.rotations() <= 1)
 		delete:SetCallback("OnClick", function()
 			Profile.deleteRotation(rotation)
 			Config.NotifyOptionsChanged()
