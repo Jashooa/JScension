@@ -260,9 +260,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	local function updateCompleteness()
 		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
 	end
-	if not isRuleComplete() then
-		card:SetTitleColor(1, 0.3, 0.3)
-	end
+	updateCompleteness()
 	card:SetTitleButtons({
 		{ label = "▲", disabled = ruleIndex <= 1, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex - 1)
