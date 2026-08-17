@@ -123,12 +123,22 @@ function Config.BuildOptions()
 				}, rotationArgs()),
 			},
 			button = {
-				type = "execute", name = "Button", control = "ButtonSettings",
-				width = "full", order = 2,
+				type = "group", name = "Button", order = 2,
+				args = {
+					buttonSettings = {
+						type = "execute", name = "", control = "ButtonSettings",
+						width = "full", order = 1,
+					},
+				},
 			},
 			log = {
-				type = "execute", name = "Log", control = "Log",
-				width = "full", order = 3,
+				type = "group", name = "Log", order = 3,
+				args = {
+					logPanel = {
+						type = "execute", name = "", control = "Log",
+						width = "full", order = 1,
+					},
+				},
 			},
 		},
 	}
