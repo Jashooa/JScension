@@ -32,6 +32,26 @@ function Unit.isCasting(unit)
 	return (UnitCastingInfo(unit) or UnitChannelInfo(unit)) and true or false
 end
 
+-- isCastingSpell returns true when the unit is casting or channeling the
+-- named spell. Cast-bar names carry a rank suffix in this client, so both
+-- sides are normalized before comparison.
+function Unit.isCastingSpell(unit, spell)
+	local name = UnitCastingInfo(unit) or UnitChannelInfo(unit)
+	if not name then return false end
+	local want = spell and ns.Spell and ns.Spell.stripRank(spell) or spell
+	return ns.Spell.stripRank(name) == want
+end
+
+-- castInterruptible returns true when the unit's current cast or channel can
+-- be interrupted. A unit with no cast is not interruptible.
+function Unit.castInterruptible(unit)
+	local _, _, _, _, _, _, _, _, notInterruptible = UnitCastingInfo(unit)
+	if notInterruptible ~= nil then return not notInterruptible end
+	local _, _, _, _, _, _, _, notInterruptibleChannel = UnitChannelInfo(unit)
+	if notInterruptibleChannel ~= nil then return not notInterruptibleChannel end
+	return false
+end
+
 -- speed returns the unit's movement speed.
 function Unit.speed(unit)
 	return GetUnitSpeed(unit)
@@ -48,6 +68,65 @@ function Unit.healthPercent(unit)
 	local max = UnitHealthMax(unit)
 	if not max or max == 0 then return nil end
 	return (UnitHealth(unit) / max) * 100
+end
+
+-- healthLossPercent returns the missing health as a percentage, or nil when
+-- the unit has no max health.
+function Unit.healthLossPercent(unit)
+	local pct = Unit.healthPercent(unit)
+	if pct == nil then return nil end
+	return 100 - pct
+end
+
+-- level returns the unit's level.
+function Unit.level(unit)
+	return UnitLevel(unit)
+end
+
+-- isPlayer returns true when the unit is a player rather than a mob.
+function Unit.isPlayer(unit)
+	return UnitIsPlayer(unit) and true or false
+end
+
+-- classification returns the unit's classification: "worldboss", "rareelite",
+-- "elite", "rare", "normal", or nil.
+function Unit.classification(unit)
+	return UnitClassification(unit)
+end
+
+-- comboPoints returns the player's combo points on the unit, or nil when the
+-- unit is not a valid combo target.
+function Unit.comboPoints(unit)
+	return GetComboPoints("player", unit)
+end
+
+-- threatPercent returns the player's threat on the unit as the scaled
+-- percentage (100 = enough to pull), or nil when the unit is not on the
+-- threat list.
+function Unit.threatPercent(unit)
+	local _, _, scaledPercent = UnitDetailedThreatSituation("player", unit)
+	return scaledPercent
+end
+
+-- isTanking returns true when the player is the primary tank of the unit.
+function Unit.isTanking(unit)
+	local status = UnitThreatSituation("player", unit)
+	return status ~= nil and status >= 3
+end
+
+-- shapeshiftForm returns the index of the player's current shapeshift form,
+-- or 0 when not in a form. The API is player-only.
+function Unit.shapeshiftForm()
+	return GetShapeshiftForm() or 0
+end
+
+-- shapeshiftFormName returns the name of the player's current shapeshift
+-- form, or nil when not in a form.
+function Unit.shapeshiftFormName()
+	local form = Unit.shapeshiftForm()
+	if not form or form == 0 then return nil end
+	local _, name = GetShapeshiftFormInfo(form)
+	return name
 end
 
 -- powerPercent returns the unit's power (mana, rage, energy, runic) as a

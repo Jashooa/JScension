@@ -18,6 +18,7 @@ Game\Spell.lua
 Game\Aura.lua
 Game\Cast.lua
 Game\Cooldown.lua
+Game\Input.lua
 
 Core\Compatibility.lua
 Core\Profile.lua

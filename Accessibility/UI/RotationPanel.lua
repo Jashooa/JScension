@@ -110,6 +110,14 @@ local function conditionField(condition, field, fieldType)
 		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field] or "enemy", function(value)
 			condition[field] = value
 		end)
+	elseif fieldType == "classification" then
+		return Fields.Dropdown(name, Conditions.Classifications, condition[field] or "normal", function(value)
+			condition[field] = value
+		end)
+	elseif fieldType == "modifier" then
+		return Fields.Dropdown(name, Conditions.Modifiers, condition[field] or "shift", function(value)
+			condition[field] = value
+		end)
 	elseif fieldType == "bool" then
 		return Fields.CheckBox(name, condition[field] == true, function(value)
 			condition[field] = value

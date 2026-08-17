@@ -79,17 +79,46 @@ fake.UnitPowerMax = function(u) local x = state.units[u]; return x and x.maxPowe
 fake.UnitCanAttack = function(_, u) local x = state.units[u]; return x and x.hostile end
 -- UnitCastingInfo/UnitChannelInfo return (name, subText, text, texture,
 -- startTime, endTime, ...) in this client. The unit table may set
--- castingEndMs / channelEndMs to simulate a cast.
+-- castingEndMs / channelEndMs to simulate a cast and castingSpell to name
+-- it; notInterruptible simulates an un-interruptible cast.
 fake.UnitCastingInfo = function(u)
 	local x = state.units[u]
-	if x and x.castingEndMs then return "Cast", "", "", 0, 0, x.castingEndMs end
+	if x and x.castingEndMs then
+		return x.castingSpell or "Cast", "", "", 0, 0, x.castingEndMs, false, 1, x.notInterruptible or false
+	end
 	return nil
 end
 fake.UnitChannelInfo = function(u)
 	local x = state.units[u]
-	if x and x.channelEndMs then return "Channel", "", "", 0, 0, x.channelEndMs end
+	if x and x.channelEndMs then
+		return x.channelSpell or "Channel", "", "", 0, 0, x.channelEndMs, x.notInterruptible or false
+	end
 	return nil
 end
+fake.UnitLevel = function(u) local x = state.units[u]; return x and x.level end
+fake.UnitIsPlayer = function(u) local x = state.units[u]; return x and x.isPlayer end
+fake.UnitClassification = function(u) local x = state.units[u]; return x and x.classification end
+fake.GetComboPoints = function(_, u) local x = state.units[u]; return x and x.comboPoints or 0 end
+fake.UnitDetailedThreatSituation = function(_, u)
+	local x = state.units[u]
+	if x and x.threatPercent then return x.isTanking or false, 3, x.threatPercent, x.threatPercent, 0 end
+	return nil
+end
+fake.UnitThreatSituation = function(_, u)
+	local x = state.units[u]
+	if x and x.threatPercent then return x.isTanking and 3 or 1 end
+	return nil
+end
+fake.GetShapeshiftForm = function() return state.shapeshiftForm or 0 end
+fake.GetShapeshiftFormInfo = function(index)
+	local forms = state.shapeshiftForms or {}
+	local name = forms[index]
+	if name then return "Interface\\Icons\\TEMP", name, index == (state.shapeshiftForm or 0), true end
+	return "Interface\\Icons\\TEMP", nil, false, false
+end
+fake.IsShiftKeyDown = function() return state.shiftKey and 1 or nil end
+fake.IsControlKeyDown = function() return state.controlKey and 1 or nil end
+fake.IsAltKeyDown = function() return state.altKey and 1 or nil end
 fake.UnitAffectingCombat = function() return state.inCombat end
 fake.GetUnitSpeed = function(u) local x = state.units[u]; return x and x.speed or 0 end
 fake.IsUsableSpell = function(s) local x = state.spells[s]; if x then return x.usable, x.noMana end end
@@ -208,6 +237,7 @@ loadModule(ROOT .. "Game/Spell.lua", ns)
 loadModule(ROOT .. "Game/Aura.lua", ns)
 loadModule(ROOT .. "Game/Cast.lua", ns)
 loadModule(ROOT .. "Game/Cooldown.lua", ns)
+loadModule(ROOT .. "Game/Input.lua", ns)
 loadModule(ROOT .. "Core/Compatibility.lua", ns)
 loadModule(ROOT .. "Core/Profile.lua", ns)
 loadModule(ROOT .. "Utils/SpellPicker.lua", ns)
@@ -446,6 +476,79 @@ do
 	ok("legacy health_pct evals", Conditions.Eval({ type = "health_pct", unit = "target", op = "<", value = 50 }) == true)
 	ok("ResolveType maps legacy key", Conditions.ResolveType("health_pct") == "health_percent")
 	ok("ResolveType passes current key", Conditions.ResolveType("health_percent") == "health_percent")
+
+	-- combo_points
+	setUnit("target", { exists = true, dead = false, hostile = true, comboPoints = 4 })
+	ok("combo_points >= 3 passes", Conditions.Eval({ type = "combo_points", unit = "target", op = ">=", value = 3 }) == true)
+	ok("combo_points >= 5 fails", Conditions.Eval({ type = "combo_points", unit = "target", op = ">=", value = 5 }) == false)
+
+	-- shapeshift_form (name-based, form 1 active)
+	state.shapeshiftForms = { "Bear Form" }
+	state.shapeshiftForm = 1
+	ok("shapeshift_form matches active form", Conditions.Eval({ type = "shapeshift_form", form = "Bear Form" }) == true)
+	ok("shapeshift_form rejects other form", Conditions.Eval({ type = "shapeshift_form", form = "Cat Form" }) == false)
+	state.shapeshiftForm = 0
+	ok("shapeshift_form fails when not in a form", Conditions.Eval({ type = "shapeshift_form", form = "Bear Form" }) == false)
+	state.shapeshiftForm = nil
+	state.shapeshiftForms = nil
+
+	-- unit_casting_spell + cast_interruptible
+	setUnit("target", { exists = true, dead = false, castingEndMs = 500, castingSpell = "Fireball" })
+	ok("unit_casting_spell matches cast name", Conditions.Eval({ type = "unit_casting_spell", unit = "target", spell = "Fireball" }) == true)
+	ok("unit_casting_spell rejects other spell", Conditions.Eval({ type = "unit_casting_spell", unit = "target", spell = "Frostbolt" }) == false)
+	ok("cast_interruptible passes on interruptible cast", Conditions.Eval({ type = "cast_interruptible", unit = "target" }) == true)
+	setUnit("target", { exists = true, dead = false, castingEndMs = 500, castingSpell = "Fireball", notInterruptible = true })
+	ok("cast_interruptible fails on un-interruptible cast", Conditions.Eval({ type = "cast_interruptible", unit = "target" }) == false)
+	setUnit("target", { exists = true, dead = false })
+	ok("cast_interruptible fails when not casting", Conditions.Eval({ type = "cast_interruptible", unit = "target" }) == false)
+
+	-- unit_level
+	setUnit("target", { exists = true, dead = false, hostile = true, level = 80 })
+	ok("unit_level >= 80 passes", Conditions.Eval({ type = "unit_level", unit = "target", op = ">=", value = 80 }) == true)
+	ok("unit_level >= 81 fails", Conditions.Eval({ type = "unit_level", unit = "target", op = ">=", value = 81 }) == false)
+
+	-- unit_health_loss
+	setUnit("target", { exists = true, dead = false, hostile = true, health = 40, maxHealth = 100 })
+	ok("unit_health_loss > 50 passes", Conditions.Eval({ type = "unit_health_loss", unit = "target", op = ">", value = 50 }) == true)
+	ok("unit_health_loss > 70 fails", Conditions.Eval({ type = "unit_health_loss", unit = "target", op = ">", value = 70 }) == false)
+
+	-- unit_is_player
+	setUnit("target", { exists = true, dead = false, hostile = true, isPlayer = true })
+	ok("unit_is_player passes on player", Conditions.Eval({ type = "unit_is_player", unit = "target" }) == true)
+	setUnit("target", { exists = true, dead = false, hostile = true, isPlayer = false })
+	ok("unit_is_player fails on mob", Conditions.Eval({ type = "unit_is_player", unit = "target" }) == false)
+
+	-- unit_classification
+	setUnit("target", { exists = true, dead = false, hostile = true, classification = "elite" })
+	ok("unit_classification elite passes", Conditions.Eval({ type = "unit_classification", unit = "target", value = "elite" }) == true)
+	ok("unit_classification worldboss fails", Conditions.Eval({ type = "unit_classification", unit = "target", value = "worldboss" }) == false)
+
+	-- threat_pct + is_tanking
+	setUnit("target", { exists = true, dead = false, hostile = true, threatPercent = 120, isTanking = true })
+	ok("threat_pct >= 100 passes", Conditions.Eval({ type = "threat_pct", unit = "target", op = ">=", value = 100 }) == true)
+	ok("is_tanking passes when tanking", Conditions.Eval({ type = "is_tanking", unit = "target" }) == true)
+	setUnit("target", { exists = true, dead = false, hostile = true, threatPercent = 50, isTanking = false })
+	ok("threat_pct >= 100 fails at 50", Conditions.Eval({ type = "threat_pct", unit = "target", op = ">=", value = 100 }) == false)
+	ok("is_tanking fails when not tanking", Conditions.Eval({ type = "is_tanking", unit = "target" }) == false)
+
+	-- aura_remains: presence implied, compares remaining
+	state.auras.target = { { kind = "buff", name = "Frost Armor", count = 1, remaining = 5, mine = true } }
+	ok("aura_remains > 3 passes", Conditions.Eval({ type = "aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 3 }) == true)
+	ok("aura_remains > 8 fails", Conditions.Eval({ type = "aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 8 }) == false)
+	state.auras.target = {}
+	ok("aura_remains fails when absent", Conditions.Eval({ type = "aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 3 }) == false)
+
+	-- modifier_keys
+	state.shiftKey = true
+	ok("modifier_keys shift passes", Conditions.Eval({ type = "modifier_keys", key = "shift" }) == true)
+	state.shiftKey = nil
+	ok("modifier_keys shift fails when released", Conditions.Eval({ type = "modifier_keys", key = "shift" }) == false)
+	state.controlKey = true
+	ok("modifier_keys control passes", Conditions.Eval({ type = "modifier_keys", key = "control" }) == true)
+	state.controlKey = nil
+	state.altKey = true
+	ok("modifier_keys alt passes", Conditions.Eval({ type = "modifier_keys", key = "alt" }) == true)
+	state.altKey = nil
 end
 
 -- ---------------------------------------------------------------------------

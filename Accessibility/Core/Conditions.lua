@@ -14,6 +14,8 @@
 --   kind        "buff" or "debuff"
 --   bool        a boolean
 --   target_type any, enemy, friendly, or player
+--   classification normal, elite, rare, rareelite, or worldboss
+--   modifier    shift, control, or alt
 --   code        a Lua snippet that returns true or false
 --
 -- eval must never error: it runs many times a second inside combat. The
@@ -28,7 +30,8 @@ local Unit = ns.Unit
 local Aura = ns.Aura
 local Cooldown = ns.Cooldown
 local Spell = ns.Spell
-assert(Constants and Compare and Unit and Aura and Cooldown and Spell,
+local Input = ns.Input
+assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input,
 	"load order: Core/Conditions before its dependencies")
 
 -- SNIPPET_MAX truncates long Lua snippets in the editor display.
@@ -269,6 +272,164 @@ register("range", {
 	end,
 })
 
+register("combo_points", {
+	label = "Combo points on target",
+	fields = { unit = "unit", op = "op", value = "number" },
+	describe = function(condition)
+		return ("combo points %s %s"):format(condition.op or ">=", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		local points = Unit.comboPoints(condition.unit or "target")
+		if not points then return false end
+		return Compare.compare(points, condition.op or ">=", tonumber(condition.value) or 0)
+	end,
+})
+
+register("shapeshift_form", {
+	label = "Shapeshift form is active",
+	fields = { form = "string" },
+	describe = function(condition)
+		return ("in form %s"):format(condition.form or "?")
+	end,
+	eval = function(condition)
+		if not condition.form or condition.form == "" then return false end
+		return Unit.shapeshiftFormName() == condition.form
+	end,
+})
+
+register("unit_casting_spell", {
+	label = "Unit is casting a specific spell",
+	fields = { unit = "unit", spell = "spell" },
+	describe = function(condition)
+		return ("%s is casting %s"):format(condition.unit or "target", condition.spell or "?")
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
+		return Unit.isCastingSpell(unit, condition.spell)
+	end,
+})
+
+register("cast_interruptible", {
+	label = "Unit's cast is interruptible",
+	fields = { unit = "unit" },
+	describe = function(condition)
+		return ("%s's cast is interruptible"):format(condition.unit or "target")
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		return Unit.exists(unit) and Unit.castInterruptible(unit)
+	end,
+})
+
+register("unit_level", {
+	label = "Unit level",
+	fields = { unit = "unit", op = "op", value = "number" },
+	describe = function(condition)
+		return ("%s level %s %s"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		if not Unit.exists(unit) then return false end
+		return Compare.compare(Unit.level(unit), condition.op or ">=", tonumber(condition.value) or 0)
+	end,
+})
+
+register("unit_health_loss", {
+	label = "Unit health lost",
+	fields = { unit = "unit", op = "op", value = "number" },
+	describe = function(condition)
+		return ("%s lost %s %s%%"):format(condition.unit or "target", condition.op or ">", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		if not Unit.isAlive(unit) then return false end
+		return Compare.compare(Unit.healthLossPercent(unit), condition.op or ">", tonumber(condition.value) or 0)
+	end,
+})
+
+register("unit_is_player", {
+	label = "Unit is a player",
+	fields = { unit = "unit" },
+	describe = function(condition)
+		return ("%s is a player"):format(condition.unit or "target")
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		return Unit.exists(unit) and Unit.isPlayer(unit)
+	end,
+})
+
+register("unit_classification", {
+	label = "Unit classification",
+	fields = { unit = "unit", value = "classification" },
+	describe = function(condition)
+		return ("%s is %s"):format(condition.unit or "target", condition.value or "normal")
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		if not Unit.exists(unit) then return false end
+		return Unit.classification(unit) == (condition.value or "normal")
+	end,
+})
+
+register("threat_pct", {
+	label = "Threat on unit (scaled percent)",
+	fields = { unit = "unit", op = "op", value = "number" },
+	describe = function(condition)
+		return ("threat on %s %s %s%%"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		if not Unit.exists(unit) then return false end
+		local pct = Unit.threatPercent(unit)
+		if not pct then return false end
+		return Compare.compare(pct, condition.op or ">=", tonumber(condition.value) or 0)
+	end,
+})
+
+register("is_tanking", {
+	label = "You are tanking the unit",
+	fields = { unit = "unit" },
+	describe = function(condition)
+		return ("you are tanking %s"):format(condition.unit or "target")
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		return Unit.exists(unit) and Unit.isTanking(unit)
+	end,
+})
+
+register("aura_remains", {
+	label = "Aura time remaining",
+	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
+	describe = function(condition)
+		return ("%s has %s with %s %ss left"):format(condition.unit or "target", condition.aura or "?",
+			condition.op or ">", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		-- nil = absent. A permanent aura reports 0 remaining; 0 is a number,
+		-- so it compares normally (0 > N fails for any positive N).
+		local remaining = Aura.find(condition.unit or "target", condition.aura, condition.kind or "buff", condition.mine)
+		if remaining == nil then return false end
+		return Compare.compare(remaining, condition.op or ">", tonumber(condition.value) or 0)
+	end,
+})
+
+register("modifier_keys", {
+	label = "A modifier key is held",
+	fields = { key = "modifier" },
+	describe = function(condition)
+		return ("%s is held"):format(condition.key or "shift")
+	end,
+	eval = function(condition)
+		local key = condition.key or "shift"
+		if key == "control" then return Input.control() end
+		if key == "alt" then return Input.alt() end
+		return Input.shift()
+	end,
+})
+
 -- The escape hatch. Ascension builds do things no fixed list covers, so this
 -- type takes a Lua snippet that returns true or false. The snippet compiles
 -- once and is cached. A broken snippet fails closed.
@@ -377,6 +538,8 @@ Conditions.Units = Constants.UNIT_TOKENS
 Conditions.Ops = { ["<"] = "<", ["<="] = "<=", [">"] = ">", [">="] = ">=", ["=="] = "==", ["~="] = "~=" }
 Conditions.Kinds = { buff = "buff", debuff = "debuff" }
 Conditions.TargetTypes = { any = "any", enemy = "enemy", friendly = "friendly", player = "player" }
+Conditions.Classifications = { normal = "normal", elite = "elite", rare = "rare", rareelite = "rareelite", worldboss = "worldboss" }
+Conditions.Modifiers = { shift = "shift", control = "control", alt = "alt" }
 
 Conditions.Registry = Registry
 Conditions.Order = order
