@@ -85,14 +85,21 @@ local conditionExpanded = {}
 -- rule table so it survives panel rebuilds.
 local ruleExpanded = {}
 
--- conditionTypeValues returns the { key = label } map for the type dropdown.
+-- conditionTypeValues returns the { key = label } map for the type dropdown
+-- plus an order array sorted by label so the dropdown is alphabetical.
 local function conditionTypeValues()
 	local list = Conditions.TypeList()
 	local values = {}
 	for i = 1, #list do
 		values[list[i].key] = list[i].label
 	end
-	return values
+	-- sort keys by label for alphabetical display
+	local order = {}
+	for i = 1, #list do
+		order[i] = list[i].key
+	end
+	table.sort(order, function(a, b) return values[a] < values[b] end)
+	return values, order
 end
 
 -- conditionField renders one registry-declared field as the right AceGUI widget.
