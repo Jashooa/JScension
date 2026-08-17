@@ -274,12 +274,14 @@ register("range", {
 
 register("combo_points", {
 	label = "Combo points on target",
-	fields = { unit = "unit", op = "op", value = "number" },
+	-- Combo points only ever exist on the player's current target, so the
+	-- unit is fixed to "target" and the condition has no unit field.
+	fields = { op = "op", value = "number" },
 	describe = function(condition)
 		return ("combo points %s %s"):format(condition.op or ">=", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local points = Unit.comboPoints(condition.unit or "target")
+		local points = Unit.comboPoints("target")
 		if not points then return false end
 		return Compare.compare(points, condition.op or ">=", tonumber(condition.value) or 0)
 	end,
@@ -332,19 +334,6 @@ register("unit_level", {
 		local unit = condition.unit or "target"
 		if not Unit.exists(unit) then return false end
 		return Compare.compare(Unit.level(unit), condition.op or ">=", tonumber(condition.value) or 0)
-	end,
-})
-
-register("unit_health_loss", {
-	label = "Unit health lost",
-	fields = { unit = "unit", op = "op", value = "number" },
-	describe = function(condition)
-		return ("%s lost %s %s%%"):format(condition.unit or "target", condition.op or ">", tostring(condition.value or 0))
-	end,
-	eval = function(condition)
-		local unit = condition.unit or "target"
-		if not Unit.isAlive(unit) then return false end
-		return Compare.compare(Unit.healthLossPercent(unit), condition.op or ">", tonumber(condition.value) or 0)
 	end,
 })
 

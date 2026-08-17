@@ -477,10 +477,12 @@ do
 	ok("ResolveType maps legacy key", Conditions.ResolveType("health_pct") == "health_percent")
 	ok("ResolveType passes current key", Conditions.ResolveType("health_percent") == "health_percent")
 
-	-- combo_points
+	-- combo_points (always on the player's target; no unit field)
 	setUnit("target", { exists = true, dead = false, hostile = true, comboPoints = 4 })
-	ok("combo_points >= 3 passes", Conditions.Eval({ type = "combo_points", unit = "target", op = ">=", value = 3 }) == true)
-	ok("combo_points >= 5 fails", Conditions.Eval({ type = "combo_points", unit = "target", op = ">=", value = 5 }) == false)
+	ok("combo_points >= 3 passes", Conditions.Eval({ type = "combo_points", op = ">=", value = 3 }) == true)
+	ok("combo_points >= 5 fails", Conditions.Eval({ type = "combo_points", op = ">=", value = 5 }) == false)
+	local comboClean = Conditions.Sanitize({ type = "combo_points", unit = "focus", op = ">=", value = 3 })
+	ok("combo_points sanitize drops unit", comboClean ~= nil and comboClean.unit == nil and comboClean.op == ">=" and comboClean.value == 3)
 
 	-- shapeshift_form (name-based, form 1 active)
 	state.shapeshiftForms = { "Bear Form" }
@@ -506,11 +508,6 @@ do
 	setUnit("target", { exists = true, dead = false, hostile = true, level = 80 })
 	ok("unit_level >= 80 passes", Conditions.Eval({ type = "unit_level", unit = "target", op = ">=", value = 80 }) == true)
 	ok("unit_level >= 81 fails", Conditions.Eval({ type = "unit_level", unit = "target", op = ">=", value = 81 }) == false)
-
-	-- unit_health_loss
-	setUnit("target", { exists = true, dead = false, hostile = true, health = 40, maxHealth = 100 })
-	ok("unit_health_loss > 50 passes", Conditions.Eval({ type = "unit_health_loss", unit = "target", op = ">", value = 50 }) == true)
-	ok("unit_health_loss > 70 fails", Conditions.Eval({ type = "unit_health_loss", unit = "target", op = ">", value = 70 }) == false)
 
 	-- unit_is_player
 	setUnit("target", { exists = true, dead = false, hostile = true, isPlayer = true })

@@ -70,14 +70,6 @@ function Unit.healthPercent(unit)
 	return (UnitHealth(unit) / max) * 100
 end
 
--- healthLossPercent returns the missing health as a percentage, or nil when
--- the unit has no max health.
-function Unit.healthLossPercent(unit)
-	local pct = Unit.healthPercent(unit)
-	if pct == nil then return nil end
-	return 100 - pct
-end
-
 -- level returns the unit's level.
 function Unit.level(unit)
 	return UnitLevel(unit)
