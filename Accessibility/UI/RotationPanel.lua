@@ -54,23 +54,19 @@ local function ruleTitle(rule, index)
 	return ("|T%s:32:32|t %s"):format(ruleIcon(rule), label)
 end
 
--- spellValues returns the { name = name } map for the spell dropdown plus the
--- matching order array: the empty "no spell" entry first, then the sorted
--- spell list. The rule's current spell is appended so a stale value still
--- renders.
+-- SpellValues returns the { name = name } map for the spell dropdown, with a
+-- leading empty entry so "no spell" is a selectable state. The rule's current
+-- spell is added so a stale value still renders.
 local function spellValues(rule)
 	local list = SpellPicker.List()
 	local values = { [""] = "" }
-	local order = { "" }
 	for i = 1, #list do
 		values[list[i]] = list[i]
-		order[#order + 1] = list[i]
 	end
-	if rule.spell and rule.spell ~= "" and not values[rule.spell] then
+	if rule.spell and rule.spell ~= "" then
 		values[rule.spell] = rule.spell
-		order[#order + 1] = rule.spell
 	end
-	return values, order
+	return values
 end
 
 -- ---------------------------------------------------------------------------
@@ -81,18 +77,14 @@ end
 -- by the condition table so it survives panel rebuilds.
 local conditionExpanded = {}
 
--- conditionTypeValues returns the { key = label } map for the type dropdown
--- plus the matching order array, both derived from TypeList's registration
--- order. AceGUI needs the map for value lookup and the order to render.
+-- conditionTypeValues returns the { key = label } map for the type dropdown.
 local function conditionTypeValues()
 	local list = Conditions.TypeList()
 	local values = {}
-	local order = {}
 	for i = 1, #list do
 		values[list[i].key] = list[i].label
-		order[i] = list[i].key
 	end
-	return values, order
+	return values
 end
 
 -- conditionField renders one registry-declared field as the right AceGUI widget.
@@ -144,8 +136,7 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	local typeDropdown = AceGUI:Create("Dropdown")
 	typeDropdown:SetLabel("Condition")
 	typeDropdown:SetFullWidth(true)
-	local typeValues, typeOrder = conditionTypeValues()
-	typeDropdown:SetList(typeValues, typeOrder)
+	typeDropdown:SetList(conditionTypeValues())
 	typeDropdown:SetValue(condition.type)
 	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
 		condition.type = value
@@ -251,8 +242,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	local spellDropdown = AceGUI:Create("Dropdown")
 	spellDropdown:SetLabel("Spell")
 	spellDropdown:SetFullWidth(true)
-	local spellList, spellOrder = spellValues(rule)
-	spellDropdown:SetList(spellList, spellOrder)
+	spellDropdown:SetList(spellValues(rule))
 	spellDropdown:SetValue(rule.spell or "")
 	spellDropdown:SetCallback("OnValueChanged", function(_, _, value)
 		rule.spell = value
