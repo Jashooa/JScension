@@ -395,6 +395,12 @@ local methods = {
 			{ label = "Add rule", func = function()
 				Profile.addRule(rotation)
 				self:NotifyPanelChanged()
+				-- scroll the parent ScrollFrame to the bottom so the
+				-- new rule card is visible
+				local parent = self.parent
+				if parent and parent.SetScroll then
+					parent:SetScroll(1000)
+				end
 			end },
 		})
 		self:AddChild(rulesSection)
