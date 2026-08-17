@@ -165,6 +165,7 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 
 	-- re-check completeness and update the card title color
 	local function updateCompleteness()
+		container:SetTitle(Conditions.Describe(condition))
 		if isConditionComplete(condition) then
 			container:SetTitleColor()
 		else

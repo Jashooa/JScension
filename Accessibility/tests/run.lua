@@ -994,7 +994,7 @@ do
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends default", #rotation.rules[1].conditions, 1)
 	eq("addCondition default type", rotation.rules[1].conditions[1].type, "unit_target_type")
-	eq("addCondition default value", rotation.rules[1].conditions[1].value, "enemy")
+	eq("addCondition default value (unset)", rotation.rules[1].conditions[1].value, nil)
 
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends second", #rotation.rules[1].conditions, 2)

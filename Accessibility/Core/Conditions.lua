@@ -70,7 +70,7 @@ register("unit_target_type", {
 	label = "Target type",
 	fields = { unit = "unit", value = "target_type" },
 	describe = function(condition)
-		return ("%s is %s"):format(condition.unit or "target", condition.value or "enemy")
+		return ("%s is %s"):format(condition.unit or "?", condition.value or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -92,7 +92,7 @@ register("unit_health_percent", {
 	label = "Health percent",
 	fields = { unit = "unit", op = "op", value = "percent" },
 	describe = function(condition)
-		return ("%s health %s %s%%"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
+		return ("%s health %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -107,7 +107,7 @@ register("unit_health", {
 	-- input so values like 30000 are reachable
 	fields = { unit = "unit", op = "op", value = "number" },
 	describe = function(condition)
-		return ("%s health %s %s"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
+		return ("%s health %s %s"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -121,8 +121,8 @@ register("unit_power_percent", {
 	fields = { unit = "unit", power = "power", op = "op", value = "percent" },
 	optional = { power = true },  -- nil = current pool
 	describe = function(condition)
-		return ("%s %s %s %s%%"):format(condition.unit or "player", powerName(condition.power),
-			condition.op or ">", tostring(condition.value or 0))
+		return ("%s %s %s %s%%"):format(condition.unit or "?", powerName(condition.power),
+			condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -138,8 +138,8 @@ register("unit_power", {
 	fields = { unit = "unit", power = "power", op = "op", value = "number" },
 	optional = { power = true },  -- nil = current pool
 	describe = function(condition)
-		return ("%s %s %s %s"):format(condition.unit or "player", powerName(condition.power),
-			condition.op or ">", tostring(condition.value or 0))
+		return ("%s %s %s %s"):format(condition.unit or "?", powerName(condition.power),
+			condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -155,9 +155,9 @@ register("unit_aura_present", {
 	-- presence-only checks (no time comparison)
 	optional = { mine = true, op = true, value = true },
 	describe = function(condition)
-		local base = ("%s has %s"):format(condition.unit or "target", condition.aura or "?")
+		local base = ("%s has %s"):format(condition.unit or "?", condition.aura or "?")
 		if condition.value and condition.value ~= "" then
-			base = base .. (" with %s %ss left"):format(condition.op or "<", tostring(condition.value))
+			base = base .. (" with %s %ss left"):format(condition.op or "?", tostring(condition.value))
 		end
 		return base
 	end,
@@ -177,7 +177,7 @@ register("unit_aura_missing", {
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool" },
 	optional = { mine = true },
 	describe = function(condition)
-		return ("%s is missing %s"):format(condition.unit or "target", condition.aura or "?")
+		return ("%s is missing %s"):format(condition.unit or "?", condition.aura or "?")
 	end,
 	eval = function(condition)
 		return Aura.find(condition.unit, condition.aura, condition.kind, condition.mine) == nil
@@ -189,8 +189,8 @@ register("unit_aura_stacks", {
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
 	optional = { mine = true },
 	describe = function(condition)
-		return ("%s stacks of %s %s %s"):format(condition.unit or "target", condition.aura or "?",
-			condition.op or ">=", tostring(condition.value or 1))
+		return ("%s stacks of %s %s %s"):format(condition.unit or "?", condition.aura or "?",
+			condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local _, stacks = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
@@ -233,7 +233,7 @@ register("spell_cooldown_remaining", {
 	label = "Spell cooldown remaining",
 	fields = { spell = "spell", op = "op", value = "percent" },
 	describe = function(condition)
-		return ("%s cooldown %s %ss"):format(condition.spell or "?", condition.op or "<", tostring(condition.value or 0))
+		return ("%s cooldown %s %ss"):format(condition.spell or "?", condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		if not condition.spell or condition.spell == "" then return false end
@@ -252,7 +252,7 @@ register("unit_exists", {
 	label = "Unit exists and is alive",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s exists"):format(condition.unit or "target")
+		return ("%s exists"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		return Unit.isAlive(condition.unit)
@@ -263,7 +263,7 @@ register("unit_hostile", {
 	label = "Unit is attackable",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s is attackable"):format(condition.unit or "target")
+		return ("%s is attackable"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -275,7 +275,7 @@ register("unit_casting", {
 	label = "Unit is casting",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s is casting"):format(condition.unit or "target")
+		return ("%s is casting"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -287,7 +287,7 @@ register("unit_moving", {
 	label = "Unit is moving",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s is moving"):format(condition.unit or "player")
+		return ("%s is moving"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local speed = Unit.speed(condition.unit)
@@ -299,7 +299,7 @@ register("unit_standing_still", {
 	label = "Unit is standing still",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s is standing still"):format(condition.unit or "player")
+		return ("%s is standing still"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local speed = Unit.speed(condition.unit)
@@ -311,7 +311,7 @@ register("unit_in_combat", {
 	label = "Unit is in combat",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s is in combat"):format(condition.unit or "player")
+		return ("%s is in combat"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		return Unit.inCombat(condition.unit)
@@ -322,7 +322,7 @@ register("unit_range", {
 	label = "Target is in range of a spell",
 	fields = { spell = "spell", unit = "unit" },
 	describe = function(condition)
-		return ("%s in range of %s"):format(condition.unit or "target", condition.spell or "?")
+		return ("%s in range of %s"):format(condition.unit or "?", condition.spell or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -337,7 +337,7 @@ register("player_combo_points", {
 	-- unit is fixed to "target" and the condition has no unit field.
 	fields = { op = "op", value = "percent" },
 	describe = function(condition)
-		return ("combo points %s %s"):format(condition.op or ">=", tostring(condition.value or 0))
+		return ("combo points %s %s"):format(condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local points = Unit.comboPoints("target")
@@ -362,7 +362,7 @@ register("unit_casting_spell", {
 	label = "Unit is casting a specific spell",
 	fields = { unit = "unit", spell = "spell" },
 	describe = function(condition)
-		return ("%s is casting %s"):format(condition.unit or "target", condition.spell or "?")
+		return ("%s is casting %s"):format(condition.unit or "?", condition.spell or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -375,7 +375,7 @@ register("unit_cast_interruptible", {
 	label = "Unit's cast is interruptible",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s's cast is interruptible"):format(condition.unit or "target")
+		return ("%s's cast is interruptible"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -387,7 +387,7 @@ register("unit_level", {
 	label = "Unit level",
 	fields = { unit = "unit", op = "op", value = "percent" },
 	describe = function(condition)
-		return ("%s level %s %s"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
+		return ("%s level %s %s"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -400,7 +400,7 @@ register("unit_is_player", {
 	label = "Unit is a player",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("%s is a player"):format(condition.unit or "target")
+		return ("%s is a player"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -412,7 +412,7 @@ register("unit_classification", {
 	label = "Unit classification",
 	fields = { unit = "unit", value = "classification" },
 	describe = function(condition)
-		return ("%s is %s"):format(condition.unit or "target", condition.value or "normal")
+		return ("%s is %s"):format(condition.unit or "?", condition.value or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -425,7 +425,7 @@ register("unit_threat_percent", {
 	label = "Threat on unit (scaled percent)",
 	fields = { unit = "unit", op = "op", value = "percent" },
 	describe = function(condition)
-		return ("threat on %s %s %s%%"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
+		return ("threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -440,7 +440,7 @@ register("unit_is_tanking", {
 	label = "You are tanking the unit",
 	fields = { unit = "unit" },
 	describe = function(condition)
-		return ("you are tanking %s"):format(condition.unit or "target")
+		return ("you are tanking %s"):format(condition.unit or "?")
 	end,
 	eval = function(condition)
 		local unit = condition.unit
@@ -453,8 +453,8 @@ register("unit_aura_remains", {
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
 	optional = { mine = true },
 	describe = function(condition)
-		return ("%s has %s with %s %ss left"):format(condition.unit or "target", condition.aura or "?",
-			condition.op or ">", tostring(condition.value or 0))
+		return ("%s has %s with %s %ss left"):format(condition.unit or "?", condition.aura or "?",
+			condition.op or "?", tostring(condition.value or "?"))
 	end,
 	eval = function(condition)
 		-- nil = absent. A permanent aura reports 0 remaining; 0 is a number,
@@ -469,7 +469,7 @@ register("modifier_keys", {
 	label = "A modifier key is held",
 	fields = { key = "modifier" },
 	describe = function(condition)
-		return ("%s is held"):format(condition.key or "shift")
+		return ("%s is held"):format(condition.key or "?")
 	end,
 	eval = function(condition)
 		local key = condition.key

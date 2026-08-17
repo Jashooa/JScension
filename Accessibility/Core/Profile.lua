@@ -337,7 +337,7 @@ end
 
 -- addCondition appends a default condition to a rule.
 function Profile.addCondition(rule)
-	rule.conditions[#rule.conditions + 1] = { type = "unit_target_type", value = "enemy" }
+	rule.conditions[#rule.conditions + 1] = { type = "unit_target_type" }
 end
 
 -- deleteCondition removes a condition from a rule.
