@@ -526,6 +526,15 @@ do
 	ok("unit_power describe names the pool", Conditions.Describe({ type = "unit_power", unit = "player", power = 1, op = ">=", value = 20 }) == "player rage >= 20")
 	ok("unit_power describe current pool", Conditions.Describe({ type = "unit_power", unit = "player", op = ">=", value = 20 }) == "player power >= 20")
 
+	-- bug fix: switching a condition's type must not leak the old type's
+	-- fields. A string "value" from unit_target_type ("enemy") assigned to a
+	-- number-typed field must be dropped, or the editor's slider crashes on
+	-- render (AceGUI Slider:SetValue requires a number).
+	local switched = Conditions.Sanitize({ type = "spell_cooldown_remaining", spell = "Fireball", op = "<", value = "enemy" })
+	ok("type switch drops stale string value", switched ~= nil and switched.value == nil and switched.spell == "Fireball")
+	local switched2 = Conditions.Sanitize({ type = "unit_health", unit = "target", op = "<", value = "enemy" })
+	ok("type switch to unit_health drops stale value", switched2 ~= nil and switched2.value == nil)
+
 	-- combo_points (always on the player's target; no unit field)
 	setUnit("target", { exists = true, dead = false, hostile = true, comboPoints = 4 })
 	ok("player_combo_points >= 3 passes", Conditions.Eval({ type = "player_combo_points", op = ">=", value = 3 }) == true)

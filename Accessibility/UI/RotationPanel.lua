@@ -152,6 +152,14 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	typeDropdown:SetValue(condition.type)
 	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
 		condition.type = value
+		-- the new type declares its own fields; drop whatever the old type
+		-- stored that is not declared (e.g. a string "value" from
+		-- unit_target_type must not leak into unit_health's number field)
+		local clean = Conditions.Sanitize(condition)
+		if clean then
+			for k in pairs(condition) do condition[k] = nil end
+			for k, v in pairs(clean) do condition[k] = v end
+		end
 		panel:NotifyPanelChanged()
 	end)
 	container:AddChild(typeDropdown)

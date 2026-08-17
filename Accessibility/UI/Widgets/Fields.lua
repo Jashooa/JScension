@@ -57,7 +57,13 @@ function Fields.Slider(label, min, max, step, initial, commit)
 	local slider = AceGUI:Create("Slider")
 	slider:SetLabel(label)
 	slider:SetSliderValues(min, max, step)
-	slider:SetValue(initial)
+	-- AceGUI's slider SetValue requires a number; a stale string (e.g. a
+	-- leftover "value" from a different condition type) must not crash the
+	-- panel render, so coerce and clamp to the slider range.
+	local n = tonumber(initial) or 0
+	if n < min then n = min end
+	if n > max then n = max end
+	slider:SetValue(n)
 	slider:SetCallback("OnValueChanged", function(_, _, value)
 		commit(value)
 	end)
