@@ -16,6 +16,8 @@
 --   target_type any, enemy, friendly, or player
 --   classification normal, elite, rare, rareelite, or worldboss
 --   modifier    shift, control, or alt
+--   power       a power pool (mana, rage, focus, energy, runic); nil uses
+--               the unit's current pool
 --   code        a Lua snippet that returns true or false
 --
 -- eval must never error: it runs many times a second inside combat. The
@@ -48,6 +50,17 @@ local function register(key, def)
 	def.key = key
 	Registry[key] = def
 	order[#order + 1] = key
+end
+
+-- powerName renders a power pool for a describe line; nil means the current
+-- pool. Declared before the registry entries because their describe closures
+-- capture it as an upvalue.
+local function powerName(power)
+	if power == nil then return "power" end
+	for name, value in pairs(Conditions.Powers) do
+		if value == power then return name end
+	end
+	return "power"
 end
 
 -- ---------------------------------------------------------------------------
@@ -89,16 +102,44 @@ register("unit_health_percent", {
 	end,
 })
 
-register("unit_power_percent", {
-	label = "Power percent (mana, rage, energy, runic)",
+register("unit_health", {
+	label = "Health (raw value)",
 	fields = { unit = "unit", op = "op", value = "number" },
 	describe = function(condition)
-		return ("%s power %s %s%%"):format(condition.unit or "player", condition.op or ">", tostring(condition.value or 0))
+		return ("%s health %s %s"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "target"
+		if not Unit.isAlive(unit) then return false end
+		return Compare.compare(Unit.health(unit), condition.op or "<", tonumber(condition.value) or 0)
+	end,
+})
+
+register("unit_power_percent", {
+	label = "Power percent",
+	fields = { unit = "unit", power = "power", op = "op", value = "number" },
+	describe = function(condition)
+		return ("%s %s %s %s%%"):format(condition.unit or "player", powerName(condition.power),
+			condition.op or ">", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
 		local unit = condition.unit or "player"
 		if not Unit.isAlive(unit) then return false end
-		return Compare.compare(Unit.powerPercent(unit), condition.op or ">", tonumber(condition.value) or 0)
+		return Compare.compare(Unit.powerPercent(unit, condition.power), condition.op or ">", tonumber(condition.value) or 0)
+	end,
+})
+
+register("unit_power", {
+	label = "Power (raw value)",
+	fields = { unit = "unit", power = "power", op = "op", value = "number" },
+	describe = function(condition)
+		return ("%s %s %s %s"):format(condition.unit or "player", powerName(condition.power),
+			condition.op or ">", tostring(condition.value or 0))
+	end,
+	eval = function(condition)
+		local unit = condition.unit or "player"
+		if not Unit.isAlive(unit) then return false end
+		return Compare.compare(Unit.power(unit, condition.power), condition.op or ">", tonumber(condition.value) or 0)
 	end,
 })
 
@@ -537,7 +578,7 @@ function Conditions.Sanitize(condition)
 	local clean = { type = condition.type }
 	for field, fieldType in pairs(def.fields) do
 		local raw = condition[field]
-		if fieldType == "number" then
+		if fieldType == "number" or fieldType == "power" then
 			local n = tonumber(raw)
 			if n then clean[field] = n end
 		elseif fieldType == "bool" then
@@ -556,6 +597,10 @@ Conditions.Kinds = { buff = "buff", debuff = "debuff" }
 Conditions.TargetTypes = { any = "any", enemy = "enemy", friendly = "friendly", player = "player" }
 Conditions.Classifications = { normal = "normal", elite = "elite", rare = "rare", rareelite = "rareelite", worldboss = "worldboss" }
 Conditions.Modifiers = { shift = "shift", control = "control", alt = "alt" }
+-- Power pools keyed by the client's numeric powerType (0 mana, 1 rage,
+-- 2 focus, 3 energy, 6 runic). Verified live: UnitPower accepts the type
+-- argument. An unselected pool uses the unit's current one.
+Conditions.Powers = { mana = 0, rage = 1, focus = 2, energy = 3, runic = 6 }
 
 Conditions.Registry = Registry
 Conditions.Order = order

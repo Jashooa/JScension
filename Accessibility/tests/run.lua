@@ -74,8 +74,21 @@ fake.UnitExists = function(u) local x = state.units[u]; return x and x.exists en
 fake.UnitIsDeadOrGhost = function(u) local x = state.units[u]; return x and x.dead end
 fake.UnitHealth = function(u) local x = state.units[u]; return x and x.health or 0 end
 fake.UnitHealthMax = function(u) local x = state.units[u]; return x and x.maxHealth or 0 end
-fake.UnitPower = function(u) local x = state.units[u]; return x and x.power or 0 end
-fake.UnitPowerMax = function(u) local x = state.units[u]; return x and x.maxPower or 0 end
+-- power fakes accept an optional powerType (0 mana, 1 rage, ...). A unit
+-- table may set per-pool values via powers = { [1] = 22 } and maxPowers,
+-- falling back to the plain power/maxPower fields (the current pool).
+fake.UnitPower = function(u, t)
+	local x = state.units[u]
+	if not x then return 0 end
+	if t ~= nil and x.powers and x.powers[t] ~= nil then return x.powers[t] end
+	return x.power or 0
+end
+fake.UnitPowerMax = function(u, t)
+	local x = state.units[u]
+	if not x then return 0 end
+	if t ~= nil and x.maxPowers and x.maxPowers[t] ~= nil then return x.maxPowers[t] end
+	return x.maxPower or 0
+end
 fake.UnitCanAttack = function(_, u) local x = state.units[u]; return x and x.hostile end
 -- UnitCastingInfo/UnitChannelInfo return (name, subText, text, texture,
 -- startTime, endTime, ...) in this client. The unit table may set
@@ -492,6 +505,26 @@ do
 	ok("rename: aura_remains -> unit_aura_remains", Conditions.ResolveType("aura_remains") == "unit_aura_remains")
 	-- legacy renames evaluate after migration without a sanitize pass
 	ok("legacy in_combat evals", Conditions.Eval({ type = "in_combat" }) == false)
+
+	-- raw health and power values, and the power pool selector. The player
+	-- has mana 100/120 and rage 22/100 (hybrid, per the live probe).
+	setUnit("player", { exists = true, dead = false, health = 80, maxHealth = 100,
+		power = 100, maxPower = 120, powers = { [0] = 100, [1] = 22 }, maxPowers = { [0] = 120, [1] = 100 } })
+	ok("unit_health raw < 90 passes", Conditions.Eval({ type = "unit_health", unit = "player", op = "<", value = 90 }) == true)
+	ok("unit_health raw < 70 fails", Conditions.Eval({ type = "unit_health", unit = "player", op = "<", value = 70 }) == false)
+	ok("unit_health_percent still works", Conditions.Eval({ type = "unit_health_percent", unit = "player", op = "<", value = 90 }) == true)
+	ok("unit_power raw current pool >= 100 passes", Conditions.Eval({ type = "unit_power", unit = "player", op = ">=", value = 100 }) == true)
+	ok("unit_power raw rage >= 20 passes", Conditions.Eval({ type = "unit_power", unit = "player", power = 1, op = ">=", value = 20 }) == true)
+	ok("unit_power raw rage >= 30 fails", Conditions.Eval({ type = "unit_power", unit = "player", power = 1, op = ">=", value = 30 }) == false)
+	ok("unit_power_percent rage >= 20 passes", Conditions.Eval({ type = "unit_power_percent", unit = "player", power = 1, op = ">=", value = 20 }) == true)
+	ok("unit_power_percent rage >= 30 fails", Conditions.Eval({ type = "unit_power_percent", unit = "player", power = 1, op = ">=", value = 30 }) == false)
+	ok("unit_power_percent current pool passes", Conditions.Eval({ type = "unit_power_percent", unit = "player", op = ">=", value = 80 }) == true)
+	-- sanitize coerces the power field to a number and drops junk
+	local powerClean = Conditions.Sanitize({ type = "unit_power", unit = "player", power = "1", op = ">=", value = 20, junk = "x" })
+	ok("unit_power sanitize coerces power", powerClean ~= nil and powerClean.power == 1 and powerClean.junk == nil)
+	-- describe renders the pool name without erroring (upvalue ordering bug)
+	ok("unit_power describe names the pool", Conditions.Describe({ type = "unit_power", unit = "player", power = 1, op = ">=", value = 20 }) == "player rage >= 20")
+	ok("unit_power describe current pool", Conditions.Describe({ type = "unit_power", unit = "player", op = ">=", value = 20 }) == "player power >= 20")
 
 	-- combo_points (always on the player's target; no unit field)
 	setUnit("target", { exists = true, dead = false, hostile = true, comboPoints = 4 })

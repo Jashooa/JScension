@@ -118,6 +118,10 @@ local function conditionField(condition, field, fieldType)
 		return Fields.Dropdown(name, Conditions.Modifiers, condition[field] or "shift", function(value)
 			condition[field] = value
 		end)
+	elseif fieldType == "power" then
+		return Fields.Dropdown(name, Conditions.Powers, condition[field], function(value)
+			condition[field] = value
+		end)
 	elseif fieldType == "bool" then
 		return Fields.CheckBox(name, condition[field] == true, function(value)
 			condition[field] = value

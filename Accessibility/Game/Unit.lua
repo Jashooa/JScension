@@ -62,6 +62,11 @@ function Unit.inCombat(unit)
 	return UnitAffectingCombat(unit) and true or false
 end
 
+-- health returns the unit's raw health.
+function Unit.health(unit)
+	return UnitHealth(unit)
+end
+
 -- healthPercent returns the unit's health as a percentage, or nil when the unit
 -- has no max health.
 function Unit.healthPercent(unit)
@@ -121,12 +126,31 @@ function Unit.shapeshiftFormName()
 	return name
 end
 
+-- power returns the unit's raw power. powerType (0 mana, 1 rage, 2 focus,
+-- 3 energy, 6 runic) selects a specific pool; nil uses the current one.
+function Unit.power(unit, powerType)
+	if powerType ~= nil then
+		return UnitPower(unit, powerType)
+	end
+	return UnitPower(unit)
+end
+
+-- powerMax returns the unit's max power for a pool, or nil when the unit has
+-- no max power. powerType selects a specific pool; nil uses the current one.
+function Unit.powerMax(unit, powerType)
+	if powerType ~= nil then
+		return UnitPowerMax(unit, powerType)
+	end
+	return UnitPowerMax(unit)
+end
+
 -- powerPercent returns the unit's power (mana, rage, energy, runic) as a
--- percentage, or nil when the unit has no max power.
-function Unit.powerPercent(unit)
-	local max = UnitPowerMax(unit)
+-- percentage, or nil when the unit has no max power. powerType selects a
+-- specific pool; nil uses the current one.
+function Unit.powerPercent(unit, powerType)
+	local max = Unit.powerMax(unit, powerType)
 	if not max or max == 0 then return nil end
-	return (UnitPower(unit) / max) * 100
+	return (Unit.power(unit, powerType) / max) * 100
 end
 
 ns.Unit = Unit
