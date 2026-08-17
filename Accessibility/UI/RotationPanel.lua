@@ -257,6 +257,9 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	local function isRuleComplete()
 		return rule.spell and rule.spell ~= "" and rule.unit and rule.unit ~= ""
 	end
+	local function updateCompleteness()
+		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
+	end
 	if not isRuleComplete() then
 		card:SetTitleColor(1, 0.3, 0.3)
 	end
@@ -300,7 +303,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	card:AddChild(labelInput)
 	local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
 		rule.spell = value
-		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
+		updateCompleteness()
 		panel:NotifyPanelChanged()
 	end)
 	spellDropdown:SetFullWidth(true)
@@ -308,7 +311,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
 		rule.unit = value
-		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
+		updateCompleteness()
 	end)
 	-- unitDropdown:SetRelativeWidth(0.5)
 	card:AddChild(unitDropdown)
