@@ -678,13 +678,65 @@ static LRESULT CALLBACK SubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM 
     return DefWindowProcA(hwnd, msg, wParam, lParam);
 }
 
+/* ---------- resize/recreate recovery watchdog ---------- */
+
+/* After a D3D device reset (resize, fullscreen toggle) the client may
+ * recreate the window under a fresh HWND, and this client also runs
+ * /reload on resize — wiping the Lua state. The SubclassProc (and its
+ * WM_TIMER keepalive) are bound to the old HWND, so they die with the
+ * reset. A standalone watchdog thread re-finds the window by class and
+ * re-subclasses when the HWND changes or the proc was knocked off the
+ * chain. It does only Win32 work — no Lua, no FrameScript, because
+ * those are only safe on the game's main thread. The keepalive's
+ * one-tick fs-change defer handles the /reload recovery as always. */
+
+#define WATCHDOG_MS 500   /* re-subclass latency after a device reset */
+
+static HWND g_hwnd = NULL;   /* the window we currently hold the subclass on */
+
+/* install_subclass: swap in SubclassProc if it is not already installed.
+ * Sets g_oldProc before the swap so the chain is valid at the instant it
+ * goes live, then posts WM_COMPATIBILITY to re-arm the keepalive timer
+ * (and re-register if needed) on the current HWND. */
+static void install_subclass(HWND hwnd) {
+    WNDPROC cur = (WNDPROC)GetWindowLongPtrA(hwnd, GWLP_WNDPROC);
+    if (cur == SubclassProc) return;
+    g_oldProc = cur;
+    SetWindowLongPtrA(hwnd, GWLP_WNDPROC, (LONG_PTR)SubclassProc);
+    PostMessageA(hwnd, WM_COMPATIBILITY, 0, 0);
+    logmsgf("watchdog: subclassed hwnd %08lx (prev proc %08lx)",
+            (unsigned long)hwnd, (unsigned long)cur);
+}
+
+static DWORD WINAPI WatchdogThread(LPVOID param) {
+    (void)param;
+    for (;;) {
+        HWND hwnd = FindWindowA(GAME_WINDOW_CLASS, NULL);
+        if (hwnd) {
+            if (hwnd != g_hwnd) {
+                /* first run, or window recreated after a device reset */
+                g_hwnd = hwnd;
+                install_subclass(hwnd);
+            } else if ((WNDPROC)GetWindowLongPtrA(hwnd, GWLP_WNDPROC) != SubclassProc) {
+                /* same window, but the proc was reset under us */
+                install_subclass(hwnd);
+            }
+        }
+        Sleep(WATCHDOG_MS);
+    }
+    return 0;   /* not reached */
+}
+
 /* Setup thread spawned from DllMain. Finds the game window ONCE (inject after
  * the game is up), VALIDATES the client layout (aborts cleanly on any mismatch -
- * before subclassing, so nothing is installed), subclasses the window and posts
- * WM_COMPATIBILITY. Exits; the subclass + timer carry the rest - the timer
- * retries registration until the manifest is populated, then handles /reload. */
+ * before anything is installed). Then starts the watchdog thread and returns.
+ * All subclassing, initial and recovery, belongs to the watchdog. Nothing is
+ * installed in SetupThread itself, so fatal_exit remains safe (it is only
+ * valid before any subclass is installed). */
 static DWORD WINAPI SetupThread(LPVOID param) {
     HWND hwnd;
+    HANDLE t;
+    (void)param;
     logmsg("setup: looking for game window");
     hwnd = FindWindowA(GAME_WINDOW_CLASS, NULL);
     if (!hwnd) {
@@ -693,10 +745,12 @@ static DWORD WINAPI SetupThread(LPVOID param) {
     if (!validate_layout()) {
         fatal_exit("setup: layout mismatch - unloading (re-inject a matching build)");
     }
-    g_oldProc = (WNDPROC)GetWindowLongPtrA(hwnd, GWLP_WNDPROC);
-    SetWindowLongPtrA(hwnd, GWLP_WNDPROC, (LONG_PTR)SubclassProc);
-    PostMessageA(hwnd, WM_COMPATIBILITY, 0, 0);
-    logmsg("setup: subclassed + posted WM_COMPATIBILITY");
+    t = CreateThread(NULL, 0, WatchdogThread, NULL, 0, NULL);
+    if (!t) {
+        fatal_exit("setup: watchdog thread failed to start - unloading");
+    }
+    CloseHandle(t);
+    logmsg("setup: validated; watchdog started");
     return 0;
 }
 

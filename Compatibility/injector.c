@@ -34,6 +34,7 @@
  * wedge the injector, not the user's session.
  */
 #include <windows.h>
+#include <tlhelp32.h>
 #include <stdio.h>
 #include <string.h>
 #include "common.h"
@@ -98,6 +99,33 @@ int main(int argc, char** argv) {
     if (!hProc) {
         printf("compatibility: OpenProcess failed: %lu\n", (unsigned long)GetLastError());
         return 1;
+    }
+
+    /* 2b. Check if the DLL is already loaded in the game process.
+     * Enumerating the target's module list prevents a double-inject that
+     * would register the global twice and break the descriptor invariant. */
+    {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, winPid);
+        int already = 0;
+        if (snap != INVALID_HANDLE_VALUE) {
+            MODULEENTRY32 me;
+            me.dwSize = sizeof(me);
+            if (Module32First(snap, &me)) {
+                do {
+                    if (_stricmp(me.szModule, COMPAT_DLL_NAME) == 0) {
+                        already = 1;
+                        break;
+                    }
+                } while (Module32Next(snap, &me));
+            }
+            CloseHandle(snap);
+        }
+        if (already) {
+            printf("compatibility: %s is already loaded in pid %lu - refusing to inject again\n",
+                   COMPAT_DLL_NAME, (unsigned long)winPid);
+            CloseHandle(hProc);
+            return 1;
+        }
     }
 
     /* 3. Allocate space in the game for the dll path string and copy it. */
