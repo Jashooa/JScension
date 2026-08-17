@@ -81,6 +81,10 @@ end
 -- by the condition table so it survives panel rebuilds.
 local conditionExpanded = {}
 
+-- ruleExpanded tracks whether a rule's settings are shown. Keyed by the
+-- rule table so it survives panel rebuilds.
+local ruleExpanded = {}
+
 -- conditionTypeValues returns the { key = label } map for the type dropdown.
 local function conditionTypeValues()
 	local list = Conditions.TypeList()
@@ -163,15 +167,27 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
 	local def = Conditions.Registry[condition.type]
 
-	-- re-check completeness and update the card title color
-	local function updateCompleteness()
+	-- updateCardState refreshes the title text and color. Red = incomplete,
+	-- orange = disabled, green = enabled and valid. Red overrides orange.
+	local function updateCardState()
 		container:SetTitle(Conditions.Describe(condition))
-		if isConditionComplete(condition) then
-			container:SetTitleColor()
-		else
+		if not isConditionComplete(condition) then
 			container:SetTitleColor(1, 0.3, 0.3)
+		elseif condition.enabled == false then
+			container:SetTitleColor(1, 0.6, 0)
+		else
+			container:SetTitleColor(0.3, 0.8, 0.3)
 		end
 	end
+
+	local enabled = AceGUI:Create("CheckBox")
+	enabled:SetLabel("Enabled")
+	enabled:SetValue(condition.enabled ~= false)
+	enabled:SetCallback("OnValueChanged", function(_, _, value)
+		condition.enabled = value
+		updateCardState()
+	end)
+	container:AddChild(enabled)
 
 	local typeDropdown = AceGUI:Create("Dropdown")
 	typeDropdown:SetLabel("Condition")
@@ -180,25 +196,21 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	typeDropdown:SetValue(condition.type)
 	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
 		condition.type = value
-		-- the new type declares its own fields; drop whatever the old type
-		-- stored that is not declared (e.g. a string "value" from
-		-- unit_target_type must not leak into unit_health's number field)
 		local clean = Conditions.Sanitize(condition)
 		if clean then
 			for k in pairs(condition) do condition[k] = nil end
 			for k, v in pairs(clean) do condition[k] = v end
 		end
-		updateCompleteness()
+		updateCardState()
 		panel:NotifyPanelChanged()
 	end)
 	container:AddChild(typeDropdown)
 
 	if def then
 		for field, fieldType in pairs(def.fields) do
-			container:AddChild(conditionField(condition, field, fieldType, updateCompleteness))
+			container:AddChild(conditionField(condition, field, fieldType, updateCardState))
 		end
-		-- re-check after init (bool/percent fields may have been set)
-		updateCompleteness()
+		updateCardState()
 	end
 end
 
@@ -212,9 +224,6 @@ local function conditionCard(panel, rule, condIndex, container)
 	card:SetTitle(Conditions.Describe(condition))
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
-	if not isConditionComplete(condition) then
-		card:SetTitleColor(1, 0.3, 0.3)
-	end
 	card:SetTitleButtons({
 		{ label = conditionExpanded[condition] and "−" or "+", func = function()
 			conditionExpanded[condition] = not conditionExpanded[condition]
@@ -228,14 +237,19 @@ local function conditionCard(panel, rule, condIndex, container)
 	})
 	container:AddChild(card)
 
-	-- settings controls: type dropdown, per-type fields. Only built when
-	-- expanded; a collapsed card shows just the summary and title buttons
-	-- (border hidden so no empty box renders below the title row).
 	if conditionExpanded[condition] then
 		card:SetBorderVisible(true)
 		buildConditionSettings(panel, rule, condIndex, card)
 	else
 		card:SetBorderVisible(false)
+		-- collapsed: set color without building settings
+		if not isConditionComplete(condition) then
+			card:SetTitleColor(1, 0.3, 0.3)
+		elseif condition.enabled == false then
+			card:SetTitleColor(1, 0.6, 0)
+		else
+			card:SetTitleColor(0.3, 0.8, 0.3)
+		end
 	end
 	return card
 end
@@ -244,9 +258,10 @@ end
 -- rule card
 -- ---------------------------------------------------------------------------
 
--- ruleCard builds one rule card: title bar with ▲/▼/Delete buttons, main
--- options, and a Conditions section. Control widths match the old editor:
--- Enabled half, Label full, Spell full, Target unit half, Conditions full.
+-- ruleCard builds one rule card. Settings are shown only when expanded; a
+-- collapsed card shows just the title and buttons. The title color follows
+-- the same scheme as conditions: red = incomplete, orange = disabled,
+-- green = enabled and valid.
 local function ruleCard(panel, rotation, ruleIndex, container)
 	local rule = rotation.rules[ruleIndex]
 	local rules = rotation.rules
@@ -258,11 +273,22 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	local function isRuleComplete()
 		return rule.spell and rule.spell ~= "" and rule.unit and rule.unit ~= ""
 	end
-	local function updateCompleteness()
-		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
+	local function updateCardState()
+		card:SetTitle(ruleTitle(rule, ruleIndex))
+		if not isRuleComplete() then
+			card:SetTitleColor(1, 0.3, 0.3)
+		elseif rule.enabled == false then
+			card:SetTitleColor(1, 0.6, 0)
+		else
+			card:SetTitleColor(0.3, 0.8, 0.3)
+		end
 	end
-	updateCompleteness()
+	updateCardState()
 	card:SetTitleButtons({
+		{ label = ruleExpanded[rule] and "−" or "+", func = function()
+			ruleExpanded[rule] = not ruleExpanded[rule]
+			panel:NotifyPanelChanged()
+		end },
 		{ label = "▲", disabled = ruleIndex <= 1, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex - 1)
 			panel:NotifyPanelChanged()
@@ -273,64 +299,71 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		end },
 		{ label = "Delete", func = function()
 			Profile.deleteRule(rotation, ruleIndex)
+			ruleExpanded[rule] = nil
 			panel:NotifyPanelChanged()
 		end },
 	})
-	-- SpellTooltip.Attach wires the tooltip; the titlebar frame is the hover
-	-- surface (fontstrings are Regions and cannot reliably receive mouse
-	-- events).
 	SpellTooltip.Attach(card.titlebar, function() return rule end)
 	container:AddChild(card)
 
-	-- main options
-	local enabled = AceGUI:Create("CheckBox")
-	enabled:SetLabel("Enabled")
-	-- enabled:SetRelativeWidth(0.5)
-	enabled:SetValue(rule.enabled)
-	enabled:SetCallback("OnValueChanged", function(_, _, value)
-		rule.enabled = value
-	end)
-	card:AddChild(enabled)
+	if ruleExpanded[rule] then
+		card:SetBorderVisible(true)
 
-	local labelInput = Fields.Text("Label", rule.name, function(value)
-		rule.name = value
-		-- redraw this card's title so the label change is visible immediately;
-		-- empty falls back to the spell name, else "Rule N"
-		card:SetTitle(ruleTitle(rule, ruleIndex))
-	end)
-	labelInput:SetFullWidth(true)
-	card:AddChild(labelInput)
-	local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
-		rule.spell = value
-		updateCompleteness()
-		panel:NotifyPanelChanged()
-	end)
-	spellDropdown:SetFullWidth(true)
-	card:AddChild(spellDropdown)
+		local enabled = AceGUI:Create("CheckBox")
+		enabled:SetLabel("Enabled")
+		enabled:SetValue(rule.enabled ~= false)
+		enabled:SetCallback("OnValueChanged", function(_, _, value)
+			rule.enabled = value
+			updateCardState()
+		end)
+		card:AddChild(enabled)
 
-	local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
-		rule.unit = value
-		updateCompleteness()
-	end)
-	-- unitDropdown:SetRelativeWidth(0.5)
-	card:AddChild(unitDropdown)
-
-	-- conditions section: title bar carries the "Add condition" button
-	local conditionsGroup = AceGUI:Create("TitleButtonGroup")
-	conditionsGroup:SetTitle("Conditions")
-	conditionsGroup:SetFullWidth(true)
-	conditionsGroup:SetLayout("Flow")
-	conditionsGroup:SetTitleButtons({
-		{ label = "Add condition", func = function()
-			Profile.addCondition(rule)
-			conditionExpanded[rule.conditions[#rule.conditions]] = true
+		local labelInput = Fields.Text("Label", rule.name, function(value)
+			rule.name = value
+			card:SetTitle(ruleTitle(rule, ruleIndex))
+		end)
+		labelInput:SetFullWidth(true)
+		card:AddChild(labelInput)
+		local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
+			rule.spell = value
+			updateCardState()
 			panel:NotifyPanelChanged()
-		end },
-	})
-	card:AddChild(conditionsGroup)
+		end)
+		spellDropdown:SetFullWidth(true)
+		card:AddChild(spellDropdown)
 
-	for i = 1, #rule.conditions do
-		conditionCard(panel, rule, i, conditionsGroup)
+		local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
+			rule.unit = value
+			updateCardState()
+		end)
+		card:AddChild(unitDropdown)
+
+		local conditionsGroup = AceGUI:Create("TitleButtonGroup")
+		conditionsGroup:SetTitle("Conditions")
+		conditionsGroup:SetFullWidth(true)
+		conditionsGroup:SetLayout("Flow")
+		conditionsGroup:SetTitleButtons({
+			{ label = "Add condition", func = function()
+				Profile.addCondition(rule)
+				conditionExpanded[rule.conditions[#rule.conditions]] = true
+				panel:NotifyPanelChanged()
+			end },
+		})
+		card:AddChild(conditionsGroup)
+
+		for i = 1, #rule.conditions do
+			conditionCard(panel, rule, i, conditionsGroup)
+		end
+	else
+		card:SetBorderVisible(false)
+		-- collapsed: set color without building settings
+		if not isRuleComplete() then
+			card:SetTitleColor(1, 0.3, 0.3)
+		elseif rule.enabled == false then
+			card:SetTitleColor(1, 0.6, 0)
+		else
+			card:SetTitleColor(0.3, 0.8, 0.3)
+		end
 	end
 
 	return card
@@ -394,7 +427,7 @@ local methods = {
 		rulesSection:SetTitleButtons({
 			{ label = "Add rule", func = function()
 				Profile.addRule(rotation)
-				-- flag scrolls to bottom after the rebuild layout completes
+				ruleExpanded[rotation.rules[#rotation.rules]] = true
 				self._scrollToBottom = true
 				self:NotifyPanelChanged()
 			end },

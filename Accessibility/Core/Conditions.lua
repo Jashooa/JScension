@@ -550,6 +550,8 @@ end
 
 function Conditions.Eval(condition)
 	if type(condition) ~= "table" then return false end
+	-- disabled conditions are skipped
+	if condition.enabled == false then return false end
 	local def = Registry[Conditions.ResolveType(condition.type)]
 	if type(def) ~= "table" or type(def.eval) ~= "function" then return false end
 	-- completeness check: every declared field must be set. optional fields
