@@ -65,9 +65,6 @@ local function sanitizeRule(rule)
 	if spell == "" then return nil end
 
 	local unit = asString(rule.unit, "target")
-	if not Constants.UNIT_TOKENS[unit] then
-		unit = "target"
-	end
 
 	local clean = {
 		name = asString(rule.name, spell),

@@ -38,12 +38,25 @@ function Fields.Multiline(label, initial, commit)
 	return edit
 end
 
--- Dropdown builds a dropdown. commit runs on selection.
-function Fields.Dropdown(label, values, initial, commit)
+-- Dropdown builds a dropdown. entries is either an ordered array of strings
+-- (identity values where key == label) or a map (e.g. Powers with number
+-- keys). For arrays the dropdown builder derives the AceGUI map and uses
+-- the array as the display order. commit runs on selection.
+function Fields.Dropdown(label, entries, initial, commit)
 	if not AceGUI then return nil end
+	local list, order
+	if entries[1] ~= nil then
+		-- ordered array: derive identity map, use array as order
+		list = {}
+		for i = 1, #entries do list[entries[i]] = entries[i] end
+		order = entries
+	else
+		-- map (e.g. Powers with number keys): use as-is, AceGUI sorts
+		list = entries
+	end
 	local dropdown = AceGUI:Create("Dropdown")
 	dropdown:SetLabel(label)
-	dropdown:SetList(values)
+	dropdown:SetList(list, order)
 	dropdown:SetValue(initial)
 	dropdown:SetCallback("OnValueChanged", function(_, _, value)
 		commit(value)

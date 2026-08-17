@@ -13,7 +13,8 @@ ns.Constants = {
 	-- current cast's end is queued by the client, so the next cast starts
 	-- with no dead time.
 	DEFAULT_QUEUE_WINDOW = 0.4,
-	-- The valid unit tokens. The sanitizer whitelists against this, the
-	-- editor dropdown reads it, and the engine's self-cast checks use it.
-	UNIT_TOKENS = { player = "player", target = "target", focus = "focus", pet = "pet", mouseover = "mouseover" },
+	-- The valid unit tokens, in editor display order. An ordered array, not
+	-- a map: the dropdown builder derives the AceGUI map from it, and the
+	-- first element ("player") is the default when a new condition is added.
+	UNIT_TOKENS = { "player", "target", "focus", "pet", "mouseover" },
 }

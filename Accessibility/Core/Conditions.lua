@@ -119,6 +119,7 @@ register("unit_health", {
 register("unit_power_percent", {
 	label = "Power percent",
 	fields = { unit = "unit", power = "power", op = "op", value = "percent" },
+	optional = { power = true },  -- nil = current pool
 	describe = function(condition)
 		return ("%s %s %s %s%%"):format(condition.unit or "player", powerName(condition.power),
 			condition.op or ">", tostring(condition.value or 0))
@@ -135,6 +136,7 @@ register("unit_power", {
 	-- raw is an unbounded number (not a 0-100 percent), rendered as a text
 	-- input so values like 30000 are reachable
 	fields = { unit = "unit", power = "power", op = "op", value = "number" },
+	optional = { power = true },  -- nil = current pool
 	describe = function(condition)
 		return ("%s %s %s %s"):format(condition.unit or "player", powerName(condition.power),
 			condition.op or ">", tostring(condition.value or 0))
@@ -149,6 +151,9 @@ register("unit_power", {
 register("unit_aura_present", {
 	label = "Unit has aura",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
+	-- mine defaults to false (checkbox init), op/value are nil for
+	-- presence-only checks (no time comparison)
+	optional = { mine = true, op = true, value = true },
 	describe = function(condition)
 		local base = ("%s has %s"):format(condition.unit or "target", condition.aura or "?")
 		if condition.value and condition.value ~= "" then
@@ -170,6 +175,7 @@ register("unit_aura_present", {
 register("unit_aura_missing", {
 	label = "Unit is missing aura",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool" },
+	optional = { mine = true },
 	describe = function(condition)
 		return ("%s is missing %s"):format(condition.unit or "target", condition.aura or "?")
 	end,
@@ -181,6 +187,7 @@ register("unit_aura_missing", {
 register("unit_aura_stacks", {
 	label = "Unit aura stack count",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
+	optional = { mine = true },
 	describe = function(condition)
 		return ("%s stacks of %s %s %s"):format(condition.unit or "target", condition.aura or "?",
 			condition.op or ">=", tostring(condition.value or 1))
@@ -444,6 +451,7 @@ register("unit_is_tanking", {
 register("unit_aura_remains", {
 	label = "Unit aura time remaining",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "percent" },
+	optional = { mine = true },
 	describe = function(condition)
 		return ("%s has %s with %s %ss left"):format(condition.unit or "target", condition.aura or "?",
 			condition.op or ">", tostring(condition.value or 0))
@@ -544,6 +552,14 @@ function Conditions.Eval(condition)
 	if type(condition) ~= "table" then return false end
 	local def = Registry[Conditions.ResolveType(condition.type)]
 	if type(def) ~= "table" or type(def.eval) ~= "function" then return false end
+	-- completeness check: every declared field must be set. optional fields
+	-- (listed in def.optional) may be nil (e.g. power = current pool).
+	for field in pairs(def.fields) do
+		if not (def.optional and def.optional[field]) then
+			local v = condition[field]
+			if v == nil or v == "" then return false end
+		end
+	end
 	local ok, result = pcall(def.eval, condition)
 	if not ok then return false end
 	return result and true or false
@@ -593,13 +609,16 @@ function Conditions.Sanitize(condition)
 	return clean
 end
 
--- Dropdown value sets, used by the editor.
+-- Dropdown value sets, used by the editor. Ordered arrays: the dropdown
+-- builder derives the AceGUI map from the array, and the first element is
+-- the default when a new condition is added. Powers stays number-keyed
+-- (not an identity map) because the client's powerType is a number.
 Conditions.Units = Constants.UNIT_TOKENS
-Conditions.Ops = { ["<"] = "<", ["<="] = "<=", [">"] = ">", [">="] = ">=", ["=="] = "==", ["~="] = "~=" }
-Conditions.Kinds = { buff = "buff", debuff = "debuff" }
-Conditions.TargetTypes = { any = "any", enemy = "enemy", friendly = "friendly", player = "player" }
-Conditions.Classifications = { normal = "normal", elite = "elite", rare = "rare", rareelite = "rareelite", worldboss = "worldboss" }
-Conditions.Modifiers = { shift = "shift", control = "control", alt = "alt" }
+Conditions.Ops = { "<", "<=", "==", "~=", ">", ">=" }
+Conditions.Kinds = { "buff", "debuff" }
+Conditions.TargetTypes = { "any", "enemy", "friendly", "player" }
+Conditions.Classifications = { "normal", "elite", "rare", "rareelite", "worldboss" }
+Conditions.Modifiers = { "shift", "control", "alt" }
 -- Power pools: numeric powerType -> name. AceGUI's dropdown displays the
 -- map's values and sorts the keys numerically, so keying by the client's
 -- powerType (0 mana, 1 rage, 2 focus, 3 energy, 6 runic) shows the names

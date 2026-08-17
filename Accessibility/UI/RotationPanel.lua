@@ -91,31 +91,33 @@ end
 local function conditionField(condition, field, fieldType)
 	local name = field:gsub("_", " ")
 	if fieldType == "percent" then
-		return Fields.Slider(name, 0, 100, 1, condition[field] or 0, function(value)
+		-- slider always has a value; init nil to 0 (slider cannot be empty)
+		if condition[field] == nil then condition[field] = 0 end
+		return Fields.Slider(name, 0, 100, 1, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "op" then
-		return Fields.Dropdown(name, Conditions.Ops, condition[field] or "<", function(value)
+		return Fields.Dropdown(name, Conditions.Ops, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "unit" then
-		return Fields.Dropdown(name, Conditions.Units, condition[field] or "target", function(value)
+		return Fields.Dropdown(name, Conditions.Units, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "kind" then
-		return Fields.Dropdown(name, Conditions.Kinds, condition[field] or "buff", function(value)
+		return Fields.Dropdown(name, Conditions.Kinds, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "target_type" then
-		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field] or "enemy", function(value)
+		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "classification" then
-		return Fields.Dropdown(name, Conditions.Classifications, condition[field] or "normal", function(value)
+		return Fields.Dropdown(name, Conditions.Classifications, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "modifier" then
-		return Fields.Dropdown(name, Conditions.Modifiers, condition[field] or "shift", function(value)
+		return Fields.Dropdown(name, Conditions.Modifiers, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "power" then
@@ -123,11 +125,13 @@ local function conditionField(condition, field, fieldType)
 			condition[field] = value
 		end)
 	elseif fieldType == "number" then
-		return Fields.Text(name, tostring(condition[field] or ""), function(value)
-			condition[field] = tonumber(value) or 0
+		return Fields.Text(name, condition[field] and tostring(condition[field]) or "", function(value)
+			condition[field] = tonumber(value)
 		end)
 	elseif fieldType == "bool" then
-		return Fields.CheckBox(name, condition[field] == true, function(value)
+		-- checkbox always has a value; init nil to false
+		if condition[field] == nil then condition[field] = false end
+		return Fields.CheckBox(name, condition[field], function(value)
 			condition[field] = value
 		end)
 	elseif fieldType == "code" then
@@ -175,6 +179,23 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	end
 end
 
+-- isConditionComplete returns true when every declared field on the
+-- condition has a value (non-nil and non-empty-string). Fields listed in
+-- the registry entry's optional table are allowed to be nil (e.g. power
+-- on power conditions means "current pool"; mine on aura conditions is
+-- false by init, so only nil before the editor opens).
+local function isConditionComplete(condition)
+	local def = Conditions.Registry[Conditions.ResolveType(condition.type)]
+	if not def then return false end
+	for field in pairs(def.fields) do
+		if not (def.optional and def.optional[field]) then
+			local v = condition[field]
+			if v == nil or v == "" then return false end
+		end
+	end
+	return true
+end
+
 -- conditionCard builds one condition card: the summary is the title, with
 -- +/− (expand/collapse settings) and Delete as title buttons, and the
 -- settings controls below, shown only when expanded.
@@ -185,6 +206,9 @@ local function conditionCard(panel, rule, condIndex, container)
 	card:SetTitle(Conditions.Describe(condition))
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
+	if not isConditionComplete(condition) then
+		card:SetTitleColor(1, 0.3, 0.3)
+	end
 	card:SetTitleButtons({
 		{ label = conditionExpanded[condition] and "−" or "+", func = function()
 			conditionExpanded[condition] = not conditionExpanded[condition]
@@ -225,6 +249,9 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	card:SetTitle(ruleTitle(rule, ruleIndex))
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
+	if not rule.spell or rule.spell == "" then
+		card:SetTitleColor(1, 0.3, 0.3)
+	end
 	card:SetTitleButtons({
 		{ label = "▲", disabled = ruleIndex <= 1, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex - 1)
@@ -274,14 +301,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	card:AddChild(spellDropdown)
 
-	local unitDropdown = AceGUI:Create("Dropdown")
-	unitDropdown:SetLabel("Target unit")
-	unitDropdown:SetRelativeWidth(0.5)
-	unitDropdown:SetList(Conditions.Units)
-	unitDropdown:SetValue(rule.unit or "target")
-	unitDropdown:SetCallback("OnValueChanged", function(_, _, value)
+	local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit or "target", function(value)
 		rule.unit = value
 	end)
+	unitDropdown:SetRelativeWidth(0.5)
 	card:AddChild(unitDropdown)
 
 	-- conditions section: title bar carries the "Add condition" button

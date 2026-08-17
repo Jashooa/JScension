@@ -29,6 +29,7 @@ local methods = {
 		self:SetWidth(300)
 		self:SetHeight(100)
 		self:SetTitle("")
+		self:SetTitleColor()  -- reset to default gold
 		self.titleButtons = nil
 		-- a pooled widget may have been released with its border hidden (a
 		-- collapsed condition card); every new use starts with the border
@@ -41,6 +42,16 @@ local methods = {
 
 	["SetTitle"] = function(self, title)
 		self.titletext:SetText(title)
+	end,
+
+	-- SetTitleColor sets the title text color. Reset to default (gold) by
+	-- passing no arguments.
+	["SetTitleColor"] = function(self, r, g, b)
+		if r then
+			self.titletext:SetTextColor(r, g, b)
+		else
+			self.titletext:SetTextColor(1, .82, 0)
+		end
 	end,
 
 	-- SetTitleButtons installs the title-bar buttons. buttons is an array of

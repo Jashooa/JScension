@@ -397,7 +397,7 @@ do
 	local r1 = rules[1]
 	eq("rule spell kept", r1.spell, "Fireball")
 	eq("rule enabled coerced", r1.enabled, false)
-	eq("rule unit defaulted", r1.unit, "target")
+	eq("rule unit kept (no whitelist)", r1.unit, "banana")
 	eq("condition count (unknown dropped)", #r1.conditions, 1)
 	eq("condition type kept", r1.conditions[1].type, "unit_target_type")
 
@@ -426,9 +426,9 @@ do
 
 	-- in_combat
 	state.inCombat = true
-	ok("unit_in_combat passes in combat", Conditions.Eval({ type = "unit_in_combat" }) == true)
+	ok("unit_in_combat passes in combat", Conditions.Eval({ type = "unit_in_combat", unit = "player" }) == true)
 	state.inCombat = false
-	ok("unit_in_combat fails out of combat", Conditions.Eval({ type = "unit_in_combat" }) == false)
+	ok("unit_in_combat fails out of combat", Conditions.Eval({ type = "unit_in_combat", unit = "player" }) == false)
 
 	-- aura_missing / aura_present
 	state.auras.target = {}
@@ -467,7 +467,7 @@ do
 	ok("spell_ready treats 1.5s as the GCD (ready)", Conditions.Eval({ type = "spell_ready", spell = "Fireball" }) == true)
 
 	-- describe returns a string for a known type
-	ok("Describe returns a string", type(Conditions.Describe({ type = "unit_in_combat" })) == "string")
+	ok("Describe returns a string", type(Conditions.Describe({ type = "unit_in_combat", unit = "player" })) == "string")
 
 	-- the "Aura is not up" condition was renamed to "Aura missing", then
 	-- the unit_ prefix scheme renamed the key; the label names the subject
@@ -504,7 +504,13 @@ do
 	ok("rename: is_tanking -> unit_is_tanking", Conditions.ResolveType("is_tanking") == "unit_is_tanking")
 	ok("rename: aura_remains -> unit_aura_remains", Conditions.ResolveType("aura_remains") == "unit_aura_remains")
 	-- legacy renames evaluate after migration without a sanitize pass
-	ok("legacy in_combat evals", Conditions.Eval({ type = "in_combat" }) == false)
+	ok("legacy in_combat evals", Conditions.Eval({ type = "in_combat", unit = "player" }) == false)
+
+	-- completeness check: conditions with missing required fields fail eval
+	ok("incomplete condition fails (nil unit)", Conditions.Eval({ type = "unit_in_combat" }) == false)
+	ok("incomplete condition fails (empty aura)", Conditions.Eval({ type = "unit_aura_missing", unit = "target", kind = "debuff" }) == false)
+	-- optional fields (power, mine) do not make a condition incomplete
+	ok("optional mine=nil passes", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "NotPresent", kind = "buff" }) == true)
 
 	-- raw health and power values, and the power pool selector. The player
 	-- has mana 100/120 and rage 22/100 (hybrid, per the live probe).
@@ -692,7 +698,7 @@ resetRotation()
 setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 0 })
 ok("out of range blocks the cast", Rotation.CastBest() == false)
 
-	rules()[1].conditions = { { type = "unit_in_combat" } }
+	rules()[1].conditions = { { type = "unit_in_combat", unit = "player" } }
 state.inCombat = false
 ok("failing condition blocks the cast", Rotation.CastBest() == false)
 
@@ -708,7 +714,7 @@ ok("cast succeeds after the anti-spam window", Rotation.CastBest() == true)
 -- priority walk: a blocked first rule must yield to the next
 resetRotation()
 setRules({
-	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
+	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },
 	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
 })
 state.inCombat = false
@@ -731,7 +737,7 @@ ok("the first rule won", scripts[1] == 'return CastSpellByName("Fireball")')
 -- first rule does not pin a stale icon
 resetRotation()
 setRules({
-	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
+	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },
 	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
 })
 state.inCombat = false
@@ -740,8 +746,8 @@ ok("NextRule returns the passing rule", Rotation.NextRule().spell == "Fireball")
 
 resetRotation()
 setRules({
-	{ spell = "Fireball", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
-	{ spell = "Renew", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },
+	{ spell = "Renew", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },
 })
 state.inCombat = false
 ok("NextRule nil when every rule blocked", Rotation.NextRule() == nil)
