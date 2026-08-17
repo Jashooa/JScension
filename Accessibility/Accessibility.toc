@@ -33,6 +33,9 @@ UI\Widgets\ContentInset.lua
 UI\Widgets\Fields.lua
 UI\Widgets\TitleButtonGroup.lua
 UI\RotationButton.lua
+UI\Panels\Log.lua
+UI\Panels\ButtonSettings.lua
+UI\Panels\RotationMainSettings.lua
 UI\Panels\RotationSettings.lua
 UI\Panels\RotationRules.lua
 

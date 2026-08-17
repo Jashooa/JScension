@@ -1,9 +1,9 @@
 -- The configuration options.
 --
 -- Builds the declarative AceConfig option tree (rotations, button, log) and
--- registers it with AceConfigRegistry. The rotation rule cards themselves are
--- rendered by the RotationPanel widget; this file only wires the tree that
--- contains it. No UI widgets are created here.
+-- registers it with AceConfigRegistry. The rotation rule cards and settings
+-- are rendered by custom panel widgets; this file only wires the tree that
+-- contains them. No UI widgets are created here.
 --
 -- ADDON_NAME comes from the TOC via the ... vararg, the same way
 -- Accessibility.lua receives it; the name is never hardcoded twice.
@@ -17,12 +17,7 @@ local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
 
 local Profile = ns.Profile
-local Constants = ns.Constants
-assert(Profile and Constants, "load order: Core/Config before Profile/Constants")
-
-local function currentProfile()
-	return ns.addon.db.profile
-end
+assert(Profile, "load order: Core/Config before Profile")
 
 -- mergeArgs combines two arg maps. The second map's entries are appended with
 -- their orders offset past the first map's highest order, so a static group
@@ -85,7 +80,7 @@ local function rotationGroup(rotation, index)
 end
 
 -- rotationKey builds the AceConfig option key for a rotation by list index.
--- RotationPanel parses the key back with rotationIndexFromKey, so the
+-- RotationRules parses the key back with rotationIndexFromKey, so the
 -- "rotation<N>" format lives in one place.
 function Config.rotationKey(index)
 	return "rotation" .. index
@@ -111,136 +106,29 @@ end
 -- the panel
 -- ---------------------------------------------------------------------------
 
--- logDescription renders the recent log ring as a block of text for the Log
--- section. It caps the shown lines so the description stays readable.
-local LOG_DISPLAY_LINES = 30
-local function logDescription()
-	local lines = ns.Log.Dump(LOG_DISPLAY_LINES)
-	if #lines == 0 then return "" end
-	return table.concat(lines, "\n")
-end
-
-local function buttonArgs()
-	local b = currentProfile().button
-	return {
-		visible = {
-			type = "toggle", name = "Show button",
-			get = function() return b.enabled ~= false end,
-			set = function(_, v)
-				b.enabled = v
-				ns.RotationButton.SetVisible(v)
-			end,
-		},
-		locked = {
-			type = "toggle", name = "Lock position",
-			get = function() return b.locked end,
-			set = function(_, v) b.locked = v end,
-		},
-		scale = {
-			type = "range", name = "Scale", min = 0.5, max = 2.0, step = 0.1,
-			get = function() return b.scale or 1.0 end,
-			set = function(_, v) b.scale = v; ns.RotationButton.ApplyPosition(b) end,
-		},
-		reset = {
-			type = "execute", name = "Reset position",
-			func = function()
-				b.point, b.relativePoint, b.x, b.y = "CENTER", "CENTER", 0, 0
-				ns.RotationButton.ApplyPosition(b)
-			end,
-		},
-	}
-end
-
--- rotationValues returns the { name = name } map for the active-rotation
--- dropdown, from the live rotation list.
-local function rotationValues()
-	local list = Profile.rotations()
-	local values = {}
-	for i = 1, #list do
-		values[list[i].name] = list[i].name
-	end
-	return values
-end
-
 function Config.BuildOptions()
-	local p = currentProfile()
 	return {
 		type = "group",
-		name = "Accessibility",   -- becomes the window title (Open reads it)
+		name = ADDON_NAME,   -- becomes the window title (Open reads it)
 		childGroups = "tree",
 		args = {
 			rotations = {
 				type = "group", name = "Rotations", order = 1,
 				childGroups = "tree",
 				args = mergeArgs({
-					activeRotation = {
-						type = "select", name = "Active rotation", order = 1,
-						values = rotationValues,
-						get = function() return Profile.current().active end,
-						set = function(_, v)
-							Profile.setActiveByName(v)
-							Config.NotifyOptionsChanged()
-						end,
-					},
-					auto = {
-						type = "toggle", name = "Auto cast", order = 2,
-						desc = "Cast continuously while on.",
-						get = function() return p.auto end,
-						set = function() ns.addon:ToggleAuto() end,
-					},
-					pulseInterval = {
-						type = "range", name = "Pulse interval", order = 3,
-						desc = "Seconds between auto checks.",
-						min = 0.05, max = 1.0, step = 0.05,
-						get = function() return p.pulseInterval end,
-						set = function(_, v) p.pulseInterval = v end,
-					},
-					gcdProbeSpell = {
-						type = "input", name = "GCD probe spell", order = 4,
-						desc = "A known no-cooldown spell used to detect the global cooldown. Empty uses last-cast timing.",
-						get = function() return p.gcdProbeSpell or "" end,
-						set = function(_, v) p.gcdProbeSpell = v end,
-					},
-					queueWindow = {
-						type = "range", name = "Spell queue window", order = 5,
-						desc = "Start the next cast this many seconds before the current one ends, so the client queues it and casts back to back. 0 casts only when idle.",
-						min = 0, max = 1.0, step = 0.05,
-						get = function() return p.queueWindow or Constants.DEFAULT_QUEUE_WINDOW end,
-						set = function(_, v) p.queueWindow = v end,
-					},
-					newRotation = {
-						type = "execute", name = "New rotation", order = 6,
-						func = function()
-							Profile.addRotation("Rotation")
-							Config.NotifyOptionsChanged()
-						end,
+					rotationMainSettings = {
+						type = "execute", name = "", control = "RotationMainSettings",
+						width = "full", order = 1,
 					},
 				}, rotationArgs()),
 			},
 			button = {
-				type = "group", name = "Button", order = 2,
-				args = buttonArgs(),
+				type = "execute", name = "Button", control = "ButtonSettings",
+				width = "full", order = 2,
 			},
 			log = {
-				type = "group", name = "Log", order = 3,
-				args = {
-					refresh = {
-						type = "execute", name = "Refresh", order = 1,
-						func = function()
-							Config.NotifyOptionsChanged()
-						end,
-					},
-					clear = {
-						type = "execute", name = "Clear", order = 2,
-						func = function()
-							ns.Log.Clear()
-							Config.NotifyOptionsChanged()
-						end,
-					},
-					output = {
-						type = "description", name = logDescription, order = 3,
-					},
-				},
+				type = "execute", name = "Log", control = "Log",
+				width = "full", order = 3,
 			},
 		},
 	}
@@ -255,7 +143,6 @@ function Config.Setup()
 	Config.setupDone = true
 	AceConfig:RegisterOptionsTable(ADDON_NAME, Config.BuildOptions)
 	AceConfigDialog:AddToBlizOptions(ADDON_NAME, "Accessibility")
-
 end
 
 -- ensureRotationsExpanded marks the Rotations tree node expanded in the

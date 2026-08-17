@@ -947,17 +947,10 @@ do
 
 	-- general options live on the Rotations page, above its sub-tree
 	ok("no root general options", opts.args.auto == nil and opts.args.general == nil)
-	ok("active rotation dropdown", rotGroup.args.activeRotation ~= nil)
-	ok("auto on rotations page", rotGroup.args.auto ~= nil)
-	ok("pulseInterval on rotations page", rotGroup.args.pulseInterval ~= nil)
-	ok("gcdProbeSpell on rotations page", rotGroup.args.gcdProbeSpell ~= nil)
-	ok("queueWindow on rotations page", rotGroup.args.queueWindow ~= nil)
-	ok("button group present", opts.args.button ~= nil)
-	-- the Log section shows the debug ring
-	ok("log group present", opts.args.log ~= nil)
-	ok("log group is a tree node", opts.args.log.type == "group")
-	ok("log has refresh/clear", opts.args.log.args.refresh ~= nil and opts.args.log.args.clear ~= nil)
-	ok("log description is a function", type(opts.args.log.args.output.name) == "function")
+	ok("rotation main settings control", rotGroup.args.rotationMainSettings ~= nil)
+	ok("rotation main is RotationMainSettings", rotGroup.args.rotationMainSettings.control == "RotationMainSettings")
+	ok("button is ButtonSettings", opts.args.button ~= nil and opts.args.button.control == "ButtonSettings")
+	ok("log is Log", opts.args.log ~= nil and opts.args.log.control == "Log")
 
 	-- Config.Open marks the Rotations tree node expanded before showing
 	_G.__dialogStatus = {}
