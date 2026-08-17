@@ -122,6 +122,10 @@ local function conditionField(condition, field, fieldType)
 		return Fields.Dropdown(name, Conditions.Powers, condition[field], function(value)
 			condition[field] = value
 		end)
+	elseif fieldType == "raw" then
+		return Fields.Text(name, tostring(condition[field] or ""), function(value)
+			condition[field] = tonumber(value) or 0
+		end)
 	elseif fieldType == "bool" then
 		return Fields.CheckBox(name, condition[field] == true, function(value)
 			condition[field] = value

@@ -18,6 +18,8 @@
 --   modifier    shift, control, or alt
 --   power       a power pool (mana, rage, focus, energy, runic); nil uses
 --               the unit's current pool
+--   raw         an unbounded numeric value (not a 0-100 percent); rendered
+--               as a text input so large values like 30000 are reachable
 --   code        a Lua snippet that returns true or false
 --
 -- eval must never error: it runs many times a second inside combat. The
@@ -57,10 +59,7 @@ end
 -- capture it as an upvalue.
 local function powerName(power)
 	if power == nil then return "power" end
-	for name, value in pairs(Conditions.Powers) do
-		if value == power then return name end
-	end
-	return "power"
+	return Conditions.Powers[power] or "power"
 end
 
 -- ---------------------------------------------------------------------------
@@ -104,7 +103,9 @@ register("unit_health_percent", {
 
 register("unit_health", {
 	label = "Health (raw value)",
-	fields = { unit = "unit", op = "op", value = "number" },
+	-- raw is an unbounded number (not a 0-100 percent), rendered as a text
+	-- input so values like 30000 are reachable
+	fields = { unit = "unit", op = "op", value = "raw" },
 	describe = function(condition)
 		return ("%s health %s %s"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
 	end,
@@ -131,7 +132,9 @@ register("unit_power_percent", {
 
 register("unit_power", {
 	label = "Power (raw value)",
-	fields = { unit = "unit", power = "power", op = "op", value = "number" },
+	-- raw is an unbounded number (not a 0-100 percent), rendered as a text
+	-- input so values like 30000 are reachable
+	fields = { unit = "unit", power = "power", op = "op", value = "raw" },
 	describe = function(condition)
 		return ("%s %s %s %s"):format(condition.unit or "player", powerName(condition.power),
 			condition.op or ">", tostring(condition.value or 0))
@@ -578,7 +581,7 @@ function Conditions.Sanitize(condition)
 	local clean = { type = condition.type }
 	for field, fieldType in pairs(def.fields) do
 		local raw = condition[field]
-		if fieldType == "number" or fieldType == "power" then
+		if fieldType == "number" or fieldType == "power" or fieldType == "raw" then
 			local n = tonumber(raw)
 			if n then clean[field] = n end
 		elseif fieldType == "bool" then
@@ -597,10 +600,12 @@ Conditions.Kinds = { buff = "buff", debuff = "debuff" }
 Conditions.TargetTypes = { any = "any", enemy = "enemy", friendly = "friendly", player = "player" }
 Conditions.Classifications = { normal = "normal", elite = "elite", rare = "rare", rareelite = "rareelite", worldboss = "worldboss" }
 Conditions.Modifiers = { shift = "shift", control = "control", alt = "alt" }
--- Power pools keyed by the client's numeric powerType (0 mana, 1 rage,
--- 2 focus, 3 energy, 6 runic). Verified live: UnitPower accepts the type
--- argument. An unselected pool uses the unit's current one.
-Conditions.Powers = { mana = 0, rage = 1, focus = 2, energy = 3, runic = 6 }
+-- Power pools: numeric powerType -> name. AceGUI's dropdown displays the
+-- map's values and sorts the keys numerically, so keying by the client's
+-- powerType (0 mana, 1 rage, 2 focus, 3 energy, 6 runic) shows the names
+-- in order. Verified live: UnitPower accepts the type argument. An
+-- unselected pool uses the unit's current one.
+Conditions.Powers = { [0] = "mana", [1] = "rage", [2] = "focus", [3] = "energy", [6] = "runic" }
 
 Conditions.Registry = Registry
 Conditions.Order = order
