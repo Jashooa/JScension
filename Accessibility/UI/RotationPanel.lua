@@ -394,13 +394,9 @@ local methods = {
 		rulesSection:SetTitleButtons({
 			{ label = "Add rule", func = function()
 				Profile.addRule(rotation)
+				-- flag scrolls to bottom after the rebuild layout completes
+				self._scrollToBottom = true
 				self:NotifyPanelChanged()
-				-- scroll the parent ScrollFrame to the bottom so the
-				-- new rule card is visible
-				local parent = self.parent
-				if parent and parent.SetScroll then
-					parent:SetScroll(1000)
-				end
 			end },
 		})
 		self:AddChild(rulesSection)
@@ -421,6 +417,14 @@ local methods = {
 		local parent = self.parent
 		if parent and parent.DoLayout then
 			parent:DoLayout()
+		end
+		-- scroll to bottom after adding a new rule (flag set in the
+		-- button callback, consumed here after layout completes)
+		if self._scrollToBottom then
+			self._scrollToBottom = nil
+			if parent and parent.SetScroll then
+				parent:SetScroll(1000)
+			end
 		end
 	end,
 
