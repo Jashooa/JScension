@@ -84,7 +84,6 @@ local methods = {
 		local buttonGroup = AceGUI:Create("SimpleGroup")
 		buttonGroup:SetLayout("Grid")
 		buttonGroup:SetUserData("columns", 3)
-		buttonGroup:SetUserData("cellPadH", 6)
 		buttonGroup:SetFullWidth(true)
 		panel:AddChild(buttonGroup)
 

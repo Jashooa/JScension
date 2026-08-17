@@ -45,6 +45,12 @@ local methods = {
 		local panel = self
 		local p = ns.addon.db.profile
 
+		-- auto cast, pulse interval, spell queue window in a 2-column row
+		local group = AceGUI:Create("SimpleGroup")
+		group:SetLayout("Grid")
+		group:SetFullWidth(true)
+		panel:AddChild(group)
+
 		-- active rotation dropdown
 		local list = Profile.rotations()
 		local rotationNames = {}
@@ -56,8 +62,7 @@ local methods = {
 				Profile.setActiveByName(value)
 				Config.NotifyOptionsChanged()
 			end)
-		activeDropdown:SetFullWidth(true)
-		panel:AddChild(activeDropdown)
+		group:AddChild(activeDropdown)
 
 		-- new rotation button
 		local newRotation = AceGUI:Create("Button")
@@ -66,16 +71,7 @@ local methods = {
 			Profile.addRotation("Rotation")
 			Config.NotifyOptionsChanged()
 		end)
-		newRotation:SetFullWidth(true)
-		panel:AddChild(newRotation)
-
-		-- auto cast, pulse interval, spell queue window in a 3-column row
-		local row = AceGUI:Create("SimpleGroup")
-		row:SetLayout("Grid")
-		row:SetUserData("columns", 3)
-		row:SetUserData("cellPadH", 6)
-		row:SetFullWidth(true)
-		panel:AddChild(row)
+		group:AddChild(newRotation)
 
 		local auto = AceGUI:Create("CheckBox")
 		auto:SetLabel("Auto cast")
@@ -83,7 +79,13 @@ local methods = {
 		auto:SetCallback("OnValueChanged", function()
 			ns.addon:ToggleAuto()
 		end)
-		row:AddChild(auto)
+		group:AddChild(auto)
+
+		-- GCD probe spell
+		local gcdProbe = Fields.Text("GCD probe spell", p.gcdProbeSpell or "", function(value)
+			p.gcdProbeSpell = value
+		end)
+		group:AddChild(gcdProbe)
 
 		local pulseInterval = AceGUI:Create("Slider")
 		pulseInterval:SetLabel("Pulse interval")
@@ -92,7 +94,7 @@ local methods = {
 		pulseInterval:SetCallback("OnValueChanged", function(_, _, value)
 			p.pulseInterval = value
 		end)
-		row:AddChild(pulseInterval)
+		group:AddChild(pulseInterval)
 
 		local queueWindow = AceGUI:Create("Slider")
 		queueWindow:SetLabel("Spell queue window")
@@ -101,14 +103,7 @@ local methods = {
 		queueWindow:SetCallback("OnValueChanged", function(_, _, value)
 			p.queueWindow = value
 		end)
-		row:AddChild(queueWindow)
-
-		-- GCD probe spell
-		local gcdProbe = Fields.Text("GCD probe spell", p.gcdProbeSpell or "", function(value)
-			p.gcdProbeSpell = value
-		end)
-		gcdProbe:SetFullWidth(true)
-		panel:AddChild(gcdProbe)
+		group:AddChild(queueWindow)
 
 		self:DoLayout()
 		local parent = self.parent

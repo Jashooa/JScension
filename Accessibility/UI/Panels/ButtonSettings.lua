@@ -42,13 +42,11 @@ local methods = {
 		local panel = self
 		local b = ns.addon.db.profile.button
 
-		-- toggles + reset in a 3-column row
-		local row1 = AceGUI:Create("SimpleGroup")
-		row1:SetLayout("Grid")
-		row1:SetUserData("columns", 3)
-		row1:SetUserData("cellPadH", 6)
-		row1:SetFullWidth(true)
-		panel:AddChild(row1)
+		-- toggles + reset in a 2-column row
+		local group = AceGUI:Create("SimpleGroup")
+		group:SetLayout("Grid")
+		group:SetFullWidth(true)
+		panel:AddChild(group)
 
 		local visible = AceGUI:Create("CheckBox")
 		visible:SetLabel("Show button")
@@ -57,7 +55,7 @@ local methods = {
 			b.enabled = value
 			ns.RotationButton.SetVisible(value)
 		end)
-		row1:AddChild(visible)
+		group:AddChild(visible)
 
 		local locked = AceGUI:Create("CheckBox")
 		locked:SetLabel("Lock position")
@@ -65,7 +63,7 @@ local methods = {
 		locked:SetCallback("OnValueChanged", function(_, _, value)
 			b.locked = value
 		end)
-		row1:AddChild(locked)
+		group:AddChild(locked)
 
 		local reset = AceGUI:Create("Button")
 		reset:SetText("Reset position")
@@ -73,7 +71,7 @@ local methods = {
 			b.point, b.relativePoint, b.x, b.y = "CENTER", "CENTER", 0, 0
 			ns.RotationButton.ApplyPosition(b)
 		end)
-		row1:AddChild(reset)
+		group:AddChild(reset)
 
 		-- scale slider
 		local scale = AceGUI:Create("Slider")
@@ -84,8 +82,7 @@ local methods = {
 			b.scale = value
 			ns.RotationButton.ApplyPosition(b)
 		end)
-		scale:SetFullWidth(true)
-		panel:AddChild(scale)
+		group:AddChild(scale)
 
 		self:DoLayout()
 		local parent = self.parent
