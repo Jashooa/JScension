@@ -54,7 +54,7 @@ end
 -- the registry entries
 -- ---------------------------------------------------------------------------
 
-register("target_type", {
+register("unit_target_type", {
 	label = "Target type",
 	fields = { unit = "unit", value = "target_type" },
 	describe = function(condition)
@@ -76,7 +76,7 @@ register("target_type", {
 	end,
 })
 
-register("health_percent", {
+register("unit_health_percent", {
 	label = "Health percent",
 	fields = { unit = "unit", op = "op", value = "number" },
 	describe = function(condition)
@@ -89,7 +89,7 @@ register("health_percent", {
 	end,
 })
 
-register("power_percent", {
+register("unit_power_percent", {
 	label = "Power percent (mana, rage, energy, runic)",
 	fields = { unit = "unit", op = "op", value = "number" },
 	describe = function(condition)
@@ -102,8 +102,8 @@ register("power_percent", {
 	end,
 })
 
-register("aura_present", {
-	label = "Aura is up",
+register("unit_aura_present", {
+	label = "Unit has aura",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
 	describe = function(condition)
 		local base = ("%s has %s"):format(condition.unit or "target", condition.aura or "?")
@@ -123,8 +123,8 @@ register("aura_present", {
 	end,
 })
 
-register("aura_missing", {
-	label = "Aura missing",
+register("unit_aura_missing", {
+	label = "Unit is missing aura",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool" },
 	describe = function(condition)
 		return ("%s is missing %s"):format(condition.unit or "target", condition.aura or "?")
@@ -134,8 +134,8 @@ register("aura_missing", {
 	end,
 })
 
-register("aura_stacks", {
-	label = "Aura stack count",
+register("unit_aura_stacks", {
+	label = "Unit aura stack count",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
 	describe = function(condition)
 		return ("%s stacks of %s %s %s"):format(condition.unit or "target", condition.aura or "?",
@@ -178,8 +178,8 @@ register("spell_usable", {
 	end,
 })
 
-register("cooldown_remaining", {
-	label = "Cooldown remaining",
+register("spell_cooldown_remaining", {
+	label = "Spell cooldown remaining",
 	fields = { spell = "spell", op = "op", value = "number" },
 	describe = function(condition)
 		return ("%s cooldown %s %ss"):format(condition.spell or "?", condition.op or "<", tostring(condition.value or 0))
@@ -232,34 +232,42 @@ register("unit_casting", {
 	end,
 })
 
-register("moving", {
-	label = "You are moving",
-	fields = {},
-	describe = function() return "you are moving" end,
-	eval = function()
-		local speed = Unit.speed("player")
+register("unit_moving", {
+	label = "Unit is moving",
+	fields = { unit = "unit" },
+	describe = function(condition)
+		return ("%s is moving"):format(condition.unit or "player")
+	end,
+	eval = function(condition)
+		local speed = Unit.speed(condition.unit or "player")
 		return speed and speed > 0
 	end,
 })
 
-register("standing_still", {
-	label = "You are standing still",
-	fields = {},
-	describe = function() return "you are standing still" end,
-	eval = function()
-		local speed = Unit.speed("player")
+register("unit_standing_still", {
+	label = "Unit is standing still",
+	fields = { unit = "unit" },
+	describe = function(condition)
+		return ("%s is standing still"):format(condition.unit or "player")
+	end,
+	eval = function(condition)
+		local speed = Unit.speed(condition.unit or "player")
 		return not speed or speed == 0
 	end,
 })
 
-register("in_combat", {
-	label = "You are in combat",
-	fields = {},
-	describe = function() return "you are in combat" end,
-	eval = function() return Unit.inCombat("player") end,
+register("unit_in_combat", {
+	label = "Unit is in combat",
+	fields = { unit = "unit" },
+	describe = function(condition)
+		return ("%s is in combat"):format(condition.unit or "player")
+	end,
+	eval = function(condition)
+		return Unit.inCombat(condition.unit or "player")
+	end,
 })
 
-register("range", {
+register("unit_range", {
 	label = "Target is in range of a spell",
 	fields = { spell = "spell", unit = "unit" },
 	describe = function(condition)
@@ -272,8 +280,8 @@ register("range", {
 	end,
 })
 
-register("combo_points", {
-	label = "Combo points on target",
+register("player_combo_points", {
+	label = "Player combo points on target",
 	-- Combo points only ever exist on the player's current target, so the
 	-- unit is fixed to "target" and the condition has no unit field.
 	fields = { op = "op", value = "number" },
@@ -287,8 +295,8 @@ register("combo_points", {
 	end,
 })
 
-register("shapeshift_form", {
-	label = "Shapeshift form is active",
+register("player_shapeshift_form", {
+	label = "Player is in a shapeshift form",
 	fields = { form = "string" },
 	describe = function(condition)
 		return ("in form %s"):format(condition.form or "?")
@@ -312,7 +320,7 @@ register("unit_casting_spell", {
 	end,
 })
 
-register("cast_interruptible", {
+register("unit_cast_interruptible", {
 	label = "Unit's cast is interruptible",
 	fields = { unit = "unit" },
 	describe = function(condition)
@@ -362,7 +370,7 @@ register("unit_classification", {
 	end,
 })
 
-register("threat_pct", {
+register("unit_threat_percent", {
 	label = "Threat on unit (scaled percent)",
 	fields = { unit = "unit", op = "op", value = "number" },
 	describe = function(condition)
@@ -377,7 +385,7 @@ register("threat_pct", {
 	end,
 })
 
-register("is_tanking", {
+register("unit_is_tanking", {
 	label = "You are tanking the unit",
 	fields = { unit = "unit" },
 	describe = function(condition)
@@ -389,8 +397,8 @@ register("is_tanking", {
 	end,
 })
 
-register("aura_remains", {
-	label = "Aura time remaining",
+register("unit_aura_remains", {
+	label = "Unit aura time remaining",
 	fields = { unit = "unit", aura = "string", kind = "kind", mine = "bool", op = "op", value = "number" },
 	describe = function(condition)
 		return ("%s has %s with %s %ss left"):format(condition.unit or "target", condition.aura or "?",
@@ -455,10 +463,29 @@ register("lua", {
 -- Eval runs one condition. It fails closed: a bad type, a missing eval, or an
 -- eval error all return false.
 -- legacyType maps pre-rename condition type keys to their current names, so
--- saved profiles from before the health_pct/power_pct rename still load.
+-- saved profiles from before a rename still load. Every rename adds a line
+-- here; the key is the old stored value, the value is the current registry
+-- key.
 local legacyType = {
-	health_pct = "health_percent",
-	power_pct = "power_percent",
+	health_pct = "unit_health_percent",
+	power_pct = "unit_power_percent",
+	target_type = "unit_target_type",
+	health_percent = "unit_health_percent",
+	power_percent = "unit_power_percent",
+	aura_present = "unit_aura_present",
+	aura_missing = "unit_aura_missing",
+	aura_stacks = "unit_aura_stacks",
+	aura_remains = "unit_aura_remains",
+	cooldown_remaining = "spell_cooldown_remaining",
+	moving = "unit_moving",
+	standing_still = "unit_standing_still",
+	in_combat = "unit_in_combat",
+	range = "unit_range",
+	combo_points = "player_combo_points",
+	shapeshift_form = "player_shapeshift_form",
+	cast_interruptible = "unit_cast_interruptible",
+	threat_pct = "unit_threat_percent",
+	is_tanking = "unit_is_tanking",
 }
 
 -- ResolveType maps a stored type key to its current name, migrating legacy

@@ -361,7 +361,7 @@ do
 		pulseInterval = -5,
 		gcdProbeSpell = 123,
 		rules = {
-		{ spell = "Fireball", enabled = false, unit = "banana", conditions = { { type = "target_type", value = "enemy" }, { type = "nope" } } },
+		{ spell = "Fireball", enabled = false, unit = "banana", conditions = { { type = "unit_target_type", value = "enemy" }, { type = "nope" } } },
 			{ spell = "", enabled = true },
 			"garbage",
 			{ spell = "Renew" },
@@ -386,7 +386,7 @@ do
 	eq("rule enabled coerced", r1.enabled, false)
 	eq("rule unit defaulted", r1.unit, "target")
 	eq("condition count (unknown dropped)", #r1.conditions, 1)
-	eq("condition type kept", r1.conditions[1].type, "target_type")
+	eq("condition type kept", r1.conditions[1].type, "unit_target_type")
 
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
@@ -403,50 +403,50 @@ do
 
 	-- target_type enemy
 	setUnit("target", { exists = true, dead = false, hostile = true })
-	ok("target_type enemy passes on hostile", Conditions.Eval({ type = "target_type", value = "enemy", unit = "target" }) == true)
-	ok("target_type friendly fails on hostile", Conditions.Eval({ type = "target_type", value = "friendly", unit = "target" }) == false)
+	ok("unit_target_type enemy passes on hostile", Conditions.Eval({ type = "unit_target_type", value = "enemy", unit = "target" }) == true)
+	ok("unit_target_type friendly fails on hostile", Conditions.Eval({ type = "unit_target_type", value = "friendly", unit = "target" }) == false)
 
 	-- health_percent
 	setUnit("target", { exists = true, dead = false, health = 30, maxHealth = 100, hostile = true })
-	ok("health_percent < 50 passes", Conditions.Eval({ type = "health_percent", unit = "target", op = "<", value = 50 }) == true)
-	ok("health_percent > 50 fails", Conditions.Eval({ type = "health_percent", unit = "target", op = ">", value = 50 }) == false)
+	ok("unit_health_percent < 50 passes", Conditions.Eval({ type = "unit_health_percent", unit = "target", op = "<", value = 50 }) == true)
+	ok("unit_health_percent > 50 fails", Conditions.Eval({ type = "unit_health_percent", unit = "target", op = ">", value = 50 }) == false)
 
 	-- in_combat
 	state.inCombat = true
-	ok("in_combat passes in combat", Conditions.Eval({ type = "in_combat" }) == true)
+	ok("unit_in_combat passes in combat", Conditions.Eval({ type = "unit_in_combat" }) == true)
 	state.inCombat = false
-	ok("in_combat fails out of combat", Conditions.Eval({ type = "in_combat" }) == false)
+	ok("unit_in_combat fails out of combat", Conditions.Eval({ type = "unit_in_combat" }) == false)
 
 	-- aura_missing / aura_present
 	state.auras.target = {}
-	ok("aura_missing passes with no aura", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == true)
+	ok("aura_missing passes with no aura", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == true)
 	state.auras.target = { { kind = "debuff", name = "Moonfire", count = 1, remaining = 10, mine = true } }
-	ok("aura_present passes with the aura", Conditions.Eval({ type = "aura_present", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
-	ok("aura_missing fails with the aura", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == false)
+	ok("aura_present passes with the aura", Conditions.Eval({ type = "unit_aura_present", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
+	ok("aura_missing fails with the aura", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == false)
 
 	-- bug fix: the game reports the player's own auras with the character
 	-- name as caster; mineOnly must still count that as ours
 	state.auras.target = { { kind = "debuff", name = "Moonfire", count = 1, remaining = 10, mine = true, casterName = true } }
-	ok("mineOnly accepts caster as name", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == false)
+	ok("mineOnly accepts caster as name", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == false)
 
 	-- bug fix: a permanent aura (no expiry) reports 0 remaining; that is
 	-- PRESENT, not missing
 	state.auras.target = { { kind = "buff", name = "Frost Armor", count = 1, remaining = nil, mine = true } }
-	ok("permanent aura present (0 remaining)", Conditions.Eval({ type = "aura_present", unit = "target", aura = "Frost Armor", kind = "buff" }) == true)
-	ok("permanent aura not missing", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Frost Armor", kind = "buff" }) == false)
+	ok("permanent aura present (0 remaining)", Conditions.Eval({ type = "unit_aura_present", unit = "target", aura = "Frost Armor", kind = "buff" }) == true)
+	ok("permanent aura not missing", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Frost Armor", kind = "buff" }) == false)
 
 	-- a stranger's copy still does not satisfy mineOnly
 	state.auras.target = { { kind = "debuff", name = "Moonfire", count = 1, remaining = 10, mine = false } }
-	ok("stranger dot not mine", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == true)
+	ok("stranger dot not mine", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff", mine = true }) == true)
 
 	-- bug fix: 3.3.5a reports auras with a rank suffix; the plain name must
 	-- still match, so "Aura missing" is false while the aura is up
 	state.auras.target = { { kind = "debuff", name = "Moonfire (Rank 2)", count = 1, remaining = 10, mine = true } }
-	ok("ranked aura matches plain name (present)", Conditions.Eval({ type = "aura_present", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
-	ok("ranked aura not missing", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff" }) == false)
+	ok("ranked aura matches plain name (present)", Conditions.Eval({ type = "unit_aura_present", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
+	ok("ranked aura not missing", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff" }) == false)
 	-- and the reverse: a configured name with the rank matches a plain report
 	state.auras.target = { { kind = "debuff", name = "Moonfire", count = 1, remaining = 10, mine = true } }
-	ok("plain aura matches ranked name", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire (Rank 2)", kind = "debuff" }) == false)
+	ok("plain aura matches ranked name", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire (Rank 2)", kind = "debuff" }) == false)
 
 	-- spell_ready GCD trick
 	setSpell("Fireball", { cdStart = 10, cdDuration = 1.5 })
@@ -454,43 +454,59 @@ do
 	ok("spell_ready treats 1.5s as the GCD (ready)", Conditions.Eval({ type = "spell_ready", spell = "Fireball" }) == true)
 
 	-- describe returns a string for a known type
-	ok("Describe returns a string", type(Conditions.Describe({ type = "in_combat" })) == "string")
+	ok("Describe returns a string", type(Conditions.Describe({ type = "unit_in_combat" })) == "string")
 
-	-- the "Aura is not up" condition was renamed to "Aura missing"
-	eq("aura_missing label renamed", Conditions.Registry.aura_missing.label, "Aura missing")
+	-- the "Aura is not up" condition was renamed to "Aura missing", then
+	-- the unit_ prefix scheme renamed the key; the label names the subject
+	eq("aura_missing label names unit", Conditions.Registry.unit_aura_missing.label, "Unit is missing aura")
 
 	-- sanitize drops unknown fields
-	local clean = Conditions.Sanitize({ type = "health_percent", unit = "target", op = "<", value = 30, junk = "x" })
+	local clean = Conditions.Sanitize({ type = "unit_health_percent", unit = "target", op = "<", value = 30, junk = "x" })
 	ok("Sanitize keeps declared fields", clean ~= nil and clean.unit == "target" and clean.op == "<" and clean.value == 30)
 	ok("Sanitize drops unknown fields", clean ~= nil and clean.junk == nil)
 	ok("Sanitize drops unknown type", Conditions.Sanitize({ type = "nope" }) == nil)
 
 	-- legacy type keys from before the rename migrate on sanitize
 	local legacy = Conditions.Sanitize({ type = "health_pct", unit = "target", op = "<", value = 40 })
-	ok("legacy health_pct migrates", legacy ~= nil and legacy.type == "health_percent" and legacy.value == 40)
+	ok("legacy health_pct migrates", legacy ~= nil and legacy.type == "unit_health_percent" and legacy.value == 40)
 	local legacyPower = Conditions.Sanitize({ type = "power_pct", unit = "player", op = ">", value = 60 })
-	ok("legacy power_pct migrates", legacyPower ~= nil and legacyPower.type == "power_percent" and legacyPower.value == 60)
+	ok("legacy power_pct migrates", legacyPower ~= nil and legacyPower.type == "unit_power_percent" and legacyPower.value == 60)
 
 	-- legacy keys also evaluate without a sanitize pass (fresh rotation data)
 	setUnit("target", { exists = true, dead = false, health = 30, maxHealth = 100, hostile = true })
 	ok("legacy health_pct evals", Conditions.Eval({ type = "health_pct", unit = "target", op = "<", value = 50 }) == true)
-	ok("ResolveType maps legacy key", Conditions.ResolveType("health_pct") == "health_percent")
-	ok("ResolveType passes current key", Conditions.ResolveType("health_percent") == "health_percent")
+	ok("ResolveType maps legacy key", Conditions.ResolveType("health_pct") == "unit_health_percent")
+	ok("ResolveType passes current key", Conditions.ResolveType("unit_health_percent") == "unit_health_percent")
+
+	-- the unit_/player_/spell_ rename maps every old key to its new name
+	ok("rename: target_type -> unit_target_type", Conditions.ResolveType("target_type") == "unit_target_type")
+	ok("rename: moving -> unit_moving", Conditions.ResolveType("moving") == "unit_moving")
+	ok("rename: in_combat -> unit_in_combat", Conditions.ResolveType("in_combat") == "unit_in_combat")
+	ok("rename: range -> unit_range", Conditions.ResolveType("range") == "unit_range")
+	ok("rename: cooldown_remaining -> spell_cooldown_remaining", Conditions.ResolveType("cooldown_remaining") == "spell_cooldown_remaining")
+	ok("rename: combo_points -> player_combo_points", Conditions.ResolveType("combo_points") == "player_combo_points")
+	ok("rename: shapeshift_form -> player_shapeshift_form", Conditions.ResolveType("shapeshift_form") == "player_shapeshift_form")
+	ok("rename: cast_interruptible -> unit_cast_interruptible", Conditions.ResolveType("cast_interruptible") == "unit_cast_interruptible")
+	ok("rename: threat_pct -> unit_threat_percent", Conditions.ResolveType("threat_pct") == "unit_threat_percent")
+	ok("rename: is_tanking -> unit_is_tanking", Conditions.ResolveType("is_tanking") == "unit_is_tanking")
+	ok("rename: aura_remains -> unit_aura_remains", Conditions.ResolveType("aura_remains") == "unit_aura_remains")
+	-- legacy renames evaluate after migration without a sanitize pass
+	ok("legacy in_combat evals", Conditions.Eval({ type = "in_combat" }) == false)
 
 	-- combo_points (always on the player's target; no unit field)
 	setUnit("target", { exists = true, dead = false, hostile = true, comboPoints = 4 })
-	ok("combo_points >= 3 passes", Conditions.Eval({ type = "combo_points", op = ">=", value = 3 }) == true)
-	ok("combo_points >= 5 fails", Conditions.Eval({ type = "combo_points", op = ">=", value = 5 }) == false)
-	local comboClean = Conditions.Sanitize({ type = "combo_points", unit = "focus", op = ">=", value = 3 })
-	ok("combo_points sanitize drops unit", comboClean ~= nil and comboClean.unit == nil and comboClean.op == ">=" and comboClean.value == 3)
+	ok("player_combo_points >= 3 passes", Conditions.Eval({ type = "player_combo_points", op = ">=", value = 3 }) == true)
+	ok("player_combo_points >= 5 fails", Conditions.Eval({ type = "player_combo_points", op = ">=", value = 5 }) == false)
+	local comboClean = Conditions.Sanitize({ type = "player_combo_points", unit = "focus", op = ">=", value = 3 })
+	ok("player_combo_points sanitize drops unit", comboClean ~= nil and comboClean.unit == nil and comboClean.op == ">=" and comboClean.value == 3)
 
 	-- shapeshift_form (name-based, form 1 active)
 	state.shapeshiftForms = { "Bear Form" }
 	state.shapeshiftForm = 1
-	ok("shapeshift_form matches active form", Conditions.Eval({ type = "shapeshift_form", form = "Bear Form" }) == true)
-	ok("shapeshift_form rejects other form", Conditions.Eval({ type = "shapeshift_form", form = "Cat Form" }) == false)
+	ok("player_shapeshift_form matches active form", Conditions.Eval({ type = "player_shapeshift_form", form = "Bear Form" }) == true)
+	ok("player_shapeshift_form rejects other form", Conditions.Eval({ type = "player_shapeshift_form", form = "Cat Form" }) == false)
 	state.shapeshiftForm = 0
-	ok("shapeshift_form fails when not in a form", Conditions.Eval({ type = "shapeshift_form", form = "Bear Form" }) == false)
+	ok("player_shapeshift_form fails when not in a form", Conditions.Eval({ type = "player_shapeshift_form", form = "Bear Form" }) == false)
 	state.shapeshiftForm = nil
 	state.shapeshiftForms = nil
 
@@ -498,11 +514,11 @@ do
 	setUnit("target", { exists = true, dead = false, castingEndMs = 500, castingSpell = "Fireball" })
 	ok("unit_casting_spell matches cast name", Conditions.Eval({ type = "unit_casting_spell", unit = "target", spell = "Fireball" }) == true)
 	ok("unit_casting_spell rejects other spell", Conditions.Eval({ type = "unit_casting_spell", unit = "target", spell = "Frostbolt" }) == false)
-	ok("cast_interruptible passes on interruptible cast", Conditions.Eval({ type = "cast_interruptible", unit = "target" }) == true)
+	ok("unit_cast_interruptible passes on interruptible cast", Conditions.Eval({ type = "unit_cast_interruptible", unit = "target" }) == true)
 	setUnit("target", { exists = true, dead = false, castingEndMs = 500, castingSpell = "Fireball", notInterruptible = true })
-	ok("cast_interruptible fails on un-interruptible cast", Conditions.Eval({ type = "cast_interruptible", unit = "target" }) == false)
+	ok("unit_cast_interruptible fails on un-interruptible cast", Conditions.Eval({ type = "unit_cast_interruptible", unit = "target" }) == false)
 	setUnit("target", { exists = true, dead = false })
-	ok("cast_interruptible fails when not casting", Conditions.Eval({ type = "cast_interruptible", unit = "target" }) == false)
+	ok("unit_cast_interruptible fails when not casting", Conditions.Eval({ type = "unit_cast_interruptible", unit = "target" }) == false)
 
 	-- unit_level
 	setUnit("target", { exists = true, dead = false, hostile = true, level = 80 })
@@ -522,18 +538,18 @@ do
 
 	-- threat_pct + is_tanking
 	setUnit("target", { exists = true, dead = false, hostile = true, threatPercent = 120, isTanking = true })
-	ok("threat_pct >= 100 passes", Conditions.Eval({ type = "threat_pct", unit = "target", op = ">=", value = 100 }) == true)
-	ok("is_tanking passes when tanking", Conditions.Eval({ type = "is_tanking", unit = "target" }) == true)
+	ok("unit_threat_percent >= 100 passes", Conditions.Eval({ type = "unit_threat_percent", unit = "target", op = ">=", value = 100 }) == true)
+	ok("unit_is_tanking passes when tanking", Conditions.Eval({ type = "unit_is_tanking", unit = "target" }) == true)
 	setUnit("target", { exists = true, dead = false, hostile = true, threatPercent = 50, isTanking = false })
-	ok("threat_pct >= 100 fails at 50", Conditions.Eval({ type = "threat_pct", unit = "target", op = ">=", value = 100 }) == false)
-	ok("is_tanking fails when not tanking", Conditions.Eval({ type = "is_tanking", unit = "target" }) == false)
+	ok("unit_threat_percent >= 100 fails at 50", Conditions.Eval({ type = "unit_threat_percent", unit = "target", op = ">=", value = 100 }) == false)
+	ok("unit_is_tanking fails when not tanking", Conditions.Eval({ type = "unit_is_tanking", unit = "target" }) == false)
 
 	-- aura_remains: presence implied, compares remaining
 	state.auras.target = { { kind = "buff", name = "Frost Armor", count = 1, remaining = 5, mine = true } }
-	ok("aura_remains > 3 passes", Conditions.Eval({ type = "aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 3 }) == true)
-	ok("aura_remains > 8 fails", Conditions.Eval({ type = "aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 8 }) == false)
+	ok("unit_aura_remains > 3 passes", Conditions.Eval({ type = "unit_aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 3 }) == true)
+	ok("unit_aura_remains > 8 fails", Conditions.Eval({ type = "unit_aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 8 }) == false)
 	state.auras.target = {}
-	ok("aura_remains fails when absent", Conditions.Eval({ type = "aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 3 }) == false)
+	ok("unit_aura_remains fails when absent", Conditions.Eval({ type = "unit_aura_remains", unit = "target", aura = "Frost Armor", kind = "buff", op = ">", value = 3 }) == false)
 
 	-- modifier_keys
 	state.shiftKey = true
@@ -634,7 +650,7 @@ resetRotation()
 setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 0 })
 ok("out of range blocks the cast", Rotation.CastBest() == false)
 
-	rules()[1].conditions = { { type = "in_combat" } }
+	rules()[1].conditions = { { type = "unit_in_combat" } }
 state.inCombat = false
 ok("failing condition blocks the cast", Rotation.CastBest() == false)
 
@@ -650,7 +666,7 @@ ok("cast succeeds after the anti-spam window", Rotation.CastBest() == true)
 -- priority walk: a blocked first rule must yield to the next
 resetRotation()
 setRules({
-	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
 	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
 })
 state.inCombat = false
@@ -673,7 +689,7 @@ ok("the first rule won", scripts[1] == 'return CastSpellByName("Fireball")')
 -- first rule does not pin a stale icon
 resetRotation()
 setRules({
-	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
 	{ spell = "Fireball", enabled = true, unit = "target", conditions = {} },
 })
 state.inCombat = false
@@ -682,8 +698,8 @@ ok("NextRule returns the passing rule", Rotation.NextRule().spell == "Fireball")
 
 resetRotation()
 setRules({
-	{ spell = "Fireball", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
-	{ spell = "Renew", enabled = true, unit = "target", conditions = { { type = "in_combat" } } },
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
+	{ spell = "Renew", enabled = true, unit = "target", conditions = { { type = "unit_in_combat" } } },
 })
 state.inCombat = false
 ok("NextRule nil when every rule blocked", Rotation.NextRule() == nil)
@@ -740,9 +756,9 @@ ok("instant spell casts again after the window", Rotation.CastBest() == true)
 
 -- aura condition accepts a numeric spell ID in the aura field
 state.auras.target = {}
-ok("aura missing resolves by name", Conditions.Eval({ type = "aura_missing", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
+ok("aura missing resolves by name", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff" }) == true)
 state.auras.target = { { kind = "debuff", name = "Moonfire (Rank 2)", count = 1, remaining = 10, mine = true } }
-ok("aura field accepts spell ID", Conditions.Eval({ type = "aura_missing", unit = "target", aura = 8921, kind = "debuff" }) == false)
+ok("aura field accepts spell ID", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = 8921, kind = "debuff" }) == false)
 -- ---------------------------------------------------------------------------
 -- Spell.stripRank tests
 -- ---------------------------------------------------------------------------
@@ -929,14 +945,14 @@ do
 	local rotation = { name = "R", rules = { { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } } }
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends default", #rotation.rules[1].conditions, 1)
-	eq("addCondition default type", rotation.rules[1].conditions[1].type, "target_type")
+	eq("addCondition default type", rotation.rules[1].conditions[1].type, "unit_target_type")
 	eq("addCondition default value", rotation.rules[1].conditions[1].value, "enemy")
 
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends second", #rotation.rules[1].conditions, 2)
 	Profile.deleteCondition(rotation.rules[1], 1)
 	eq("deleteCondition removes first", #rotation.rules[1].conditions, 1)
-	eq("deleteCondition keeps second", rotation.rules[1].conditions[1].type, "target_type")
+	eq("deleteCondition keeps second", rotation.rules[1].conditions[1].type, "unit_target_type")
 	Profile.deleteCondition(rotation.rules[1], 1)
 	eq("deleteCondition empties", #rotation.rules[1].conditions, 0)
 end
