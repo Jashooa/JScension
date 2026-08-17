@@ -254,7 +254,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	card:SetTitle(ruleTitle(rule, ruleIndex))
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
-	if not rule.spell or rule.spell == "" then
+	local function isRuleComplete()
+		return rule.spell and rule.spell ~= "" and rule.unit and rule.unit ~= ""
+	end
+	if not isRuleComplete() then
 		card:SetTitleColor(1, 0.3, 0.3)
 	end
 	card:SetTitleButtons({
@@ -297,12 +300,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	card:AddChild(labelInput)
 	local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
 		rule.spell = value
-		-- update rule card title color when spell changes
-		if not rule.spell or rule.spell == "" then
-			card:SetTitleColor(1, 0.3, 0.3)
-		else
-			card:SetTitleColor()
-		end
+		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
 		panel:NotifyPanelChanged()
 	end)
 	spellDropdown:SetFullWidth(true)
@@ -310,6 +308,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
 		rule.unit = value
+		if isRuleComplete() then card:SetTitleColor() else card:SetTitleColor(1, 0.3, 0.3) end
 	end)
 	unitDropdown:SetRelativeWidth(0.5)
 	card:AddChild(unitDropdown)
