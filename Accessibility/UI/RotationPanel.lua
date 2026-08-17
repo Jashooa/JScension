@@ -323,6 +323,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	conditionsGroup:SetTitleButtons({
 		{ label = "Add condition", func = function()
 			Profile.addCondition(rule)
+			conditionExpanded[rule.conditions[#rule.conditions]] = true
 			panel:NotifyPanelChanged()
 		end },
 	})
