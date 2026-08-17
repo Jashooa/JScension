@@ -160,6 +160,18 @@ local function isConditionComplete(condition)
 	return true
 end
 
+-- setCardColor applies the standard title color: red = incomplete, orange =
+-- disabled, green = enabled and valid. Red overrides orange.
+local function setCardColor(card, complete, enabled)
+	if not complete then
+		card:SetTitleColor(1, 0.3, 0.3)
+	elseif enabled == false then
+		card:SetTitleColor(1, 0.6, 0)
+	else
+		card:SetTitleColor(0.3, 0.8, 0.3)
+	end
+end
+
 -- buildConditionSettings fills the expanded card with the type dropdown and
 -- one control per registry-declared field. Widths match the old editor: the
 -- type is full width, fields keep their default single width.
@@ -171,13 +183,7 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	-- orange = disabled, green = enabled and valid. Red overrides orange.
 	local function updateCardState()
 		container:SetTitle(Conditions.Describe(condition))
-		if not isConditionComplete(condition) then
-			container:SetTitleColor(1, 0.3, 0.3)
-		elseif condition.enabled == false then
-			container:SetTitleColor(1, 0.6, 0)
-		else
-			container:SetTitleColor(0.3, 0.8, 0.3)
-		end
+		setCardColor(container, isConditionComplete(condition), condition.enabled)
 	end
 
 	local enabled = AceGUI:Create("CheckBox")
@@ -242,14 +248,7 @@ local function conditionCard(panel, rule, condIndex, container)
 		buildConditionSettings(panel, rule, condIndex, card)
 	else
 		card:SetBorderVisible(false)
-		-- collapsed: set color without building settings
-		if not isConditionComplete(condition) then
-			card:SetTitleColor(1, 0.3, 0.3)
-		elseif condition.enabled == false then
-			card:SetTitleColor(1, 0.6, 0)
-		else
-			card:SetTitleColor(0.3, 0.8, 0.3)
-		end
+		setCardColor(card, isConditionComplete(condition), condition.enabled)
 	end
 	return card
 end
@@ -275,13 +274,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end
 	local function updateCardState()
 		card:SetTitle(ruleTitle(rule, ruleIndex))
-		if not isRuleComplete() then
-			card:SetTitleColor(1, 0.3, 0.3)
-		elseif rule.enabled == false then
-			card:SetTitleColor(1, 0.6, 0)
-		else
-			card:SetTitleColor(0.3, 0.8, 0.3)
-		end
+		setCardColor(card, isRuleComplete(), rule.enabled)
 	end
 	updateCardState()
 	card:SetTitleButtons({
@@ -356,14 +349,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		end
 	else
 		card:SetBorderVisible(false)
-		-- collapsed: set color without building settings
-		if not isRuleComplete() then
-			card:SetTitleColor(1, 0.3, 0.3)
-		elseif rule.enabled == false then
-			card:SetTitleColor(1, 0.6, 0)
-		else
-			card:SetTitleColor(0.3, 0.8, 0.3)
-		end
+		setCardColor(card, isRuleComplete(), rule.enabled)
 	end
 
 	return card
