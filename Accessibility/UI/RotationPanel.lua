@@ -88,60 +88,49 @@ local function conditionTypeValues()
 end
 
 -- conditionField renders one registry-declared field as the right AceGUI widget.
-local function conditionField(condition, field, fieldType)
+local function conditionField(condition, field, fieldType, onChange)
 	local name = field:gsub("_", " ")
+	local function commit(value)
+		condition[field] = value
+		if onChange then onChange() end
+	end
 	if fieldType == "percent" then
 		-- slider always has a value; init nil to 0 (slider cannot be empty)
 		if condition[field] == nil then condition[field] = 0 end
-		return Fields.Slider(name, 0, 100, 1, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Slider(name, 0, 100, 1, condition[field], commit)
 	elseif fieldType == "op" then
-		return Fields.Dropdown(name, Conditions.Ops, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.Ops, condition[field], commit)
 	elseif fieldType == "unit" then
-		return Fields.Dropdown(name, Conditions.Units, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.Units, condition[field], commit)
 	elseif fieldType == "kind" then
-		return Fields.Dropdown(name, Conditions.Kinds, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.Kinds, condition[field], commit)
 	elseif fieldType == "target_type" then
-		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field], commit)
 	elseif fieldType == "classification" then
-		return Fields.Dropdown(name, Conditions.Classifications, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.Classifications, condition[field], commit)
 	elseif fieldType == "modifier" then
-		return Fields.Dropdown(name, Conditions.Modifiers, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.Modifiers, condition[field], commit)
 	elseif fieldType == "power" then
-		return Fields.Dropdown(name, Conditions.Powers, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.Dropdown(name, Conditions.Powers, condition[field], commit)
 	elseif fieldType == "number" then
 		return Fields.Text(name, condition[field] and tostring(condition[field]) or "", function(value)
 			condition[field] = tonumber(value)
+			if onChange then onChange() end
 		end)
 	elseif fieldType == "bool" then
 		-- checkbox always has a value; init nil to false
 		if condition[field] == nil then condition[field] = false end
-		return Fields.CheckBox(name, condition[field], function(value)
-			condition[field] = value
-		end)
+		return Fields.CheckBox(name, condition[field], commit)
 	elseif fieldType == "code" then
 		return Fields.Multiline(name, condition[field], function(value)
 			condition[field] = value
+			if onChange then onChange() end
 		end)
 	else
 		-- "spell", "string", and anything unknown render as a single-line box
 		return Fields.Text(name, condition[field], function(value)
 			condition[field] = value
+			if onChange then onChange() end
 		end)
 	end
 end
@@ -152,6 +141,15 @@ end
 local function buildConditionSettings(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
 	local def = Conditions.Registry[condition.type]
+
+	-- re-check completeness and update the card title color
+	local function updateCompleteness()
+		if isConditionComplete(condition) then
+			container:SetTitleColor()
+		else
+			container:SetTitleColor(1, 0.3, 0.3)
+		end
+	end
 
 	local typeDropdown = AceGUI:Create("Dropdown")
 	typeDropdown:SetLabel("Condition")
@@ -168,14 +166,17 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 			for k in pairs(condition) do condition[k] = nil end
 			for k, v in pairs(clean) do condition[k] = v end
 		end
+		updateCompleteness()
 		panel:NotifyPanelChanged()
 	end)
 	container:AddChild(typeDropdown)
 
 	if def then
 		for field, fieldType in pairs(def.fields) do
-			container:AddChild(conditionField(condition, field, fieldType))
+			container:AddChild(conditionField(condition, field, fieldType, updateCompleteness))
 		end
+		-- re-check after init (bool/percent fields may have been set)
+		updateCompleteness()
 	end
 end
 
