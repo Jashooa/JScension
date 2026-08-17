@@ -64,7 +64,7 @@ local function sanitizeRule(rule)
 	local spell = asString(rule.spell, "")
 	if spell == "" then return nil end
 
-	local unit = asString(rule.unit, "target")
+	local unit = asString(rule.unit)
 
 	local clean = {
 		name = asString(rule.name, spell),
@@ -326,7 +326,6 @@ function Profile.addRule(rotation)
 		name = "",
 		spell = "",
 		enabled = true,
-		unit = "target",
 		conditions = {},
 	}
 end

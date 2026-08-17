@@ -54,17 +54,21 @@ local function ruleTitle(rule, index)
 	return ("|T%s:32:32|t %s"):format(ruleIcon(rule), label)
 end
 
--- SpellValues returns the { name = name } map for the spell dropdown, with a
--- leading empty entry so "no spell" is a selectable state. The rule's current
--- spell is added so a stale value still renders.
+-- spellValues returns the ordered spell list for the spell dropdown. The
+-- rule's current spell is appended if stale (not in the book) so it still
+-- renders. No empty entry: the spell field starts nil and the user must pick.
 local function spellValues(rule)
 	local list = SpellPicker.List()
-	local values = { [""] = "" }
+	local values = {}
 	for i = 1, #list do
-		values[list[i]] = list[i]
+		values[i] = list[i]
 	end
 	if rule.spell and rule.spell ~= "" then
-		values[rule.spell] = rule.spell
+		local found = false
+		for i = 1, #values do
+			if values[i] == rule.spell then found = true; break end
+		end
+		if not found then values[#values + 1] = rule.spell end
 	end
 	return values
 end
@@ -291,18 +295,20 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	end)
 	labelInput:SetFullWidth(true)
 	card:AddChild(labelInput)
-	local spellDropdown = AceGUI:Create("Dropdown")
-	spellDropdown:SetLabel("Spell")
-	spellDropdown:SetFullWidth(true)
-	spellDropdown:SetList(spellValues(rule))
-	spellDropdown:SetValue(rule.spell or "")
-	spellDropdown:SetCallback("OnValueChanged", function(_, _, value)
+	local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
 		rule.spell = value
+		-- update rule card title color when spell changes
+		if not rule.spell or rule.spell == "" then
+			card:SetTitleColor(1, 0.3, 0.3)
+		else
+			card:SetTitleColor()
+		end
 		panel:NotifyPanelChanged()
 	end)
+	spellDropdown:SetFullWidth(true)
 	card:AddChild(spellDropdown)
 
-	local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit or "target", function(value)
+	local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
 		rule.unit = value
 	end)
 	unitDropdown:SetRelativeWidth(0.5)
