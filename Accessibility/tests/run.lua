@@ -949,8 +949,10 @@ do
 	ok("no root general options", opts.args.auto == nil and opts.args.general == nil)
 	ok("rotation main settings control", rotGroup.args.rotationMainSettings ~= nil)
 	ok("rotation main is RotationMainSettings", rotGroup.args.rotationMainSettings.control == "RotationMainSettings")
-	ok("button is ButtonSettings", opts.args.button ~= nil and opts.args.button.control == "ButtonSettings")
-	ok("log is Log", opts.args.log ~= nil and opts.args.log.control == "Log")
+	ok("button group present", opts.args.button ~= nil and opts.args.button.type == "group")
+	ok("button is ButtonSettings", opts.args.button.args.buttonSettings ~= nil and opts.args.button.args.buttonSettings.control == "ButtonSettings")
+	ok("log group present", opts.args.log ~= nil and opts.args.log.type == "group")
+	ok("log is Log", opts.args.log.args.logPanel ~= nil and opts.args.log.args.logPanel.control == "Log")
 
 	-- Config.Open marks the Rotations tree node expanded before showing
 	_G.__dialogStatus = {}
