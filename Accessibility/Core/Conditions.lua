@@ -73,8 +73,8 @@ register("unit_target_type", {
 		return ("%s is %s"):format(condition.unit or "target", condition.value or "enemy")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
-		local want = condition.value or "enemy"
+		local unit = condition.unit
+		local want = condition.value
 		if want == "any" then
 			return Unit.isAlive(unit)
 		elseif want == "player" then
@@ -95,9 +95,9 @@ register("unit_health_percent", {
 		return ("%s health %s %s%%"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not Unit.isAlive(unit) then return false end
-		return Compare.compare(Unit.healthPercent(unit), condition.op or "<", tonumber(condition.value) or 0)
+		return Compare.compare(Unit.healthPercent(unit), condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -110,9 +110,9 @@ register("unit_health", {
 		return ("%s health %s %s"):format(condition.unit or "target", condition.op or "<", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not Unit.isAlive(unit) then return false end
-		return Compare.compare(Unit.health(unit), condition.op or "<", tonumber(condition.value) or 0)
+		return Compare.compare(Unit.health(unit), condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -125,9 +125,9 @@ register("unit_power_percent", {
 			condition.op or ">", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "player"
+		local unit = condition.unit
 		if not Unit.isAlive(unit) then return false end
-		return Compare.compare(Unit.powerPercent(unit, condition.power), condition.op or ">", tonumber(condition.value) or 0)
+		return Compare.compare(Unit.powerPercent(unit, condition.power), condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -142,9 +142,9 @@ register("unit_power", {
 			condition.op or ">", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "player"
+		local unit = condition.unit
 		if not Unit.isAlive(unit) then return false end
-		return Compare.compare(Unit.power(unit, condition.power), condition.op or ">", tonumber(condition.value) or 0)
+		return Compare.compare(Unit.power(unit, condition.power), condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -164,11 +164,11 @@ register("unit_aura_present", {
 	eval = function(condition)
 		-- nil = absent; a number (even 0, a permanent aura) = present. The
 		-- comparison uses the first return of findAura.
-		local remaining = Aura.find(condition.unit or "target", condition.aura, condition.kind or "buff", condition.mine)
+		local remaining = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
 		if remaining == nil then return false end
 		local want = tonumber(condition.value)
 		if not want then return true end
-		return Compare.compare(remaining, condition.op or "<", want)
+		return Compare.compare(remaining, condition.op, want)
 	end,
 })
 
@@ -180,7 +180,7 @@ register("unit_aura_missing", {
 		return ("%s is missing %s"):format(condition.unit or "target", condition.aura or "?")
 	end,
 	eval = function(condition)
-		return Aura.find(condition.unit or "target", condition.aura, condition.kind or "buff", condition.mine) == nil
+		return Aura.find(condition.unit, condition.aura, condition.kind, condition.mine) == nil
 	end,
 })
 
@@ -193,9 +193,9 @@ register("unit_aura_stacks", {
 			condition.op or ">=", tostring(condition.value or 1))
 	end,
 	eval = function(condition)
-		local _, stacks = Aura.find(condition.unit or "target", condition.aura, condition.kind or "buff", condition.mine)
+		local _, stacks = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
 		if not stacks then return false end
-		return Compare.compare(stacks, condition.op or ">=", tonumber(condition.value) or 1)
+		return Compare.compare(stacks, condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -244,7 +244,7 @@ register("spell_cooldown_remaining", {
 			remaining = (start + duration) - GetTime()
 			if remaining < 0 then remaining = 0 end
 		end
-		return Compare.compare(remaining, condition.op or "<", tonumber(condition.value) or 0)
+		return Compare.compare(remaining, condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -255,7 +255,7 @@ register("unit_exists", {
 		return ("%s exists"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		return Unit.isAlive(condition.unit or "target")
+		return Unit.isAlive(condition.unit)
 	end,
 })
 
@@ -266,7 +266,7 @@ register("unit_hostile", {
 		return ("%s is attackable"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		return Unit.isAlive(unit) and Unit.canAttack(unit)
 	end,
 })
@@ -278,7 +278,7 @@ register("unit_casting", {
 		return ("%s is casting"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		return Unit.exists(unit) and Unit.isCasting(unit)
 	end,
 })
@@ -290,7 +290,7 @@ register("unit_moving", {
 		return ("%s is moving"):format(condition.unit or "player")
 	end,
 	eval = function(condition)
-		local speed = Unit.speed(condition.unit or "player")
+		local speed = Unit.speed(condition.unit)
 		return speed and speed > 0
 	end,
 })
@@ -302,7 +302,7 @@ register("unit_standing_still", {
 		return ("%s is standing still"):format(condition.unit or "player")
 	end,
 	eval = function(condition)
-		local speed = Unit.speed(condition.unit or "player")
+		local speed = Unit.speed(condition.unit)
 		return not speed or speed == 0
 	end,
 })
@@ -314,7 +314,7 @@ register("unit_in_combat", {
 		return ("%s is in combat"):format(condition.unit or "player")
 	end,
 	eval = function(condition)
-		return Unit.inCombat(condition.unit or "player")
+		return Unit.inCombat(condition.unit)
 	end,
 })
 
@@ -325,7 +325,7 @@ register("unit_range", {
 		return ("%s in range of %s"):format(condition.unit or "target", condition.spell or "?")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
 		return Spell.inRange(condition.spell, unit)
 	end,
@@ -342,7 +342,7 @@ register("player_combo_points", {
 	eval = function(condition)
 		local points = Unit.comboPoints("target")
 		if not points then return false end
-		return Compare.compare(points, condition.op or ">=", tonumber(condition.value) or 0)
+		return Compare.compare(points, condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -365,7 +365,7 @@ register("unit_casting_spell", {
 		return ("%s is casting %s"):format(condition.unit or "target", condition.spell or "?")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
 		return Unit.isCastingSpell(unit, condition.spell)
 	end,
@@ -378,7 +378,7 @@ register("unit_cast_interruptible", {
 		return ("%s's cast is interruptible"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		return Unit.exists(unit) and Unit.castInterruptible(unit)
 	end,
 })
@@ -390,9 +390,9 @@ register("unit_level", {
 		return ("%s level %s %s"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not Unit.exists(unit) then return false end
-		return Compare.compare(Unit.level(unit), condition.op or ">=", tonumber(condition.value) or 0)
+		return Compare.compare(Unit.level(unit), condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -403,7 +403,7 @@ register("unit_is_player", {
 		return ("%s is a player"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		return Unit.exists(unit) and Unit.isPlayer(unit)
 	end,
 })
@@ -415,9 +415,9 @@ register("unit_classification", {
 		return ("%s is %s"):format(condition.unit or "target", condition.value or "normal")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not Unit.exists(unit) then return false end
-		return Unit.classification(unit) == (condition.value or "normal")
+		return Unit.classification(unit) == (condition.value)
 	end,
 })
 
@@ -428,11 +428,11 @@ register("unit_threat_percent", {
 		return ("threat on %s %s %s%%"):format(condition.unit or "target", condition.op or ">=", tostring(condition.value or 0))
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		if not Unit.exists(unit) then return false end
 		local pct = Unit.threatPercent(unit)
 		if not pct then return false end
-		return Compare.compare(pct, condition.op or ">=", tonumber(condition.value) or 0)
+		return Compare.compare(pct, condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -443,7 +443,7 @@ register("unit_is_tanking", {
 		return ("you are tanking %s"):format(condition.unit or "target")
 	end,
 	eval = function(condition)
-		local unit = condition.unit or "target"
+		local unit = condition.unit
 		return Unit.exists(unit) and Unit.isTanking(unit)
 	end,
 })
@@ -459,9 +459,9 @@ register("unit_aura_remains", {
 	eval = function(condition)
 		-- nil = absent. A permanent aura reports 0 remaining; 0 is a number,
 		-- so it compares normally (0 > N fails for any positive N).
-		local remaining = Aura.find(condition.unit or "target", condition.aura, condition.kind or "buff", condition.mine)
+		local remaining = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
 		if remaining == nil then return false end
-		return Compare.compare(remaining, condition.op or ">", tonumber(condition.value) or 0)
+		return Compare.compare(remaining, condition.op, tonumber(condition.value))
 	end,
 })
 
@@ -472,7 +472,7 @@ register("modifier_keys", {
 		return ("%s is held"):format(condition.key or "shift")
 	end,
 	eval = function(condition)
-		local key = condition.key or "shift"
+		local key = condition.key
 		if key == "control" then return Input.control() end
 		if key == "alt" then return Input.alt() end
 		return Input.shift()
