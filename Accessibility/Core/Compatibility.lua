@@ -72,6 +72,10 @@ end
 -- escaped with %q into a Lua literal. A number passes through unchanged.
 -- The templates in the wrappers below are constants. Never pass a raw string
 -- through %s: a spell name could then inject code.
+local function pack_n(...)
+	return { ... }, select("#", ...)
+end
+
 function Compatibility.Call(fmt, ...)
 	local n = select("#", ...)
 	local args = { ... }
@@ -80,7 +84,9 @@ function Compatibility.Call(fmt, ...)
 			args[i] = string.format("%q", args[i])
 		end
 	end
-	return _G.Compatibility(string.format(fmt, unpack(args, 1, n)))
+	local r, rn = pack_n(_G.Compatibility(string.format(fmt, unpack(args, 1, n))))
+	if not r[1] then return nil, r[2] end
+	return unpack(r, 2, rn)
 end
 
 -- ---------------------------------------------------------------------------
@@ -132,6 +138,35 @@ end
 -- UseAction presses an action-bar slot by number.
 function Compatibility.UseAction(slot)
 	return Compatibility.Call("return UseAction(%d)", slot)
+end
+
+-- Position returns the world position (x, y, z) of a unit by GUID lookup
+-- through the shim's object manager. Returns nil if the unit is not found.
+function Compatibility.Position(unit)
+	local guid = UnitGUID(unit)
+	if not guid then return end
+	return _G.Compatibility("Compatibility_Position " .. guid)
+end
+
+-- Scale returns the OBJECT_FIELD_SCALE_X of a unit, or nil if not found.
+function Compatibility.Scale(unit)
+	local guid = UnitGUID(unit)
+	if not guid then return end
+	return _G.Compatibility("Compatibility_Scale " .. guid)
+end
+
+-- LoS returns true if there is a clear line of sight between the player and
+-- a unit, false if obstructed. Eye height is 2.1 * scale per end.
+function Compatibility.LoS(unit)
+	local px, py, pz = Compatibility.Position("player")
+	if not px then return end
+	local ux, uy, uz = Compatibility.Position(unit)
+	if not ux then return end
+	local ps = Compatibility.Scale("player")
+	local us = Compatibility.Scale(unit)
+	return _G.Compatibility(string.format(
+		"Compatibility_LOS %f %f %f %f %f %f %f %f",
+		px, py, pz, ux, uy, uz, ps, us))
 end
 
 ns.Compatibility = Compatibility

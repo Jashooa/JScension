@@ -33,11 +33,10 @@
  *   game's own reader), escapes it into a Lua string literal, and runs a
  *   pcall wrapper through FUN_00819210(script, OWNER, OWNER) - the
  *   classifier reads the owner for the duration -> allow path. The wrapper
- *   stashes (ok, value, error) in the globals Compatibility_Ok/Compatibility_Val/
- *   Compatibility_Err; Compatibility then pushes all three back to the Lua caller and
- *   returns 3, so `local ok, value, err = Compatibility("...")` reports a broken
- *   handler instead of failing silently AND hands back the script's first
- *   return value (needed for secure functions that return data). The Lua
+ *   stashes the pcall result as a table in Compatibility_Res with the count in
+ *   Compatibility_N; push_result replays the table onto the stack, so the
+ *   caller sees the full pcall contract: (true, v1, v2, ...) on success,
+ *   (false, err) on failure. The Lua
  *   return-value path is stock: the game's C-call wrapper reads the
  *   callback's EAX as the result count and FUN_00856010 copies that many
  *   16-byte slots to the caller, bottom-up (first pushed = first result).
@@ -79,12 +78,10 @@
 #include <string.h>
 #include "common.h"
 
-/* The three globals the pcall wrapper stashes results in. push_result reads
- * them back; the Lua wrapper strings write them. Declared once so the reader
- * and writer spellings cannot drift. */
-#define RESULT_OK_GLOBAL   "Compatibility_Ok"
-#define RESULT_VAL_GLOBAL  "Compatibility_Val"
-#define RESULT_ERR_GLOBAL  "Compatibility_Err"
+/* The pcall wrapper stashes results in two globals: Compatibility_N (count) and
+ * Compatibility_Res (table). push_result replays the table onto the stack. */
+#define RESULT_N_GLOBAL    "Compatibility_N"
+#define RESULT_RES_GLOBAL  "Compatibility_Res"
 
 /* ------------------------------------------------------------------ *
  * Game addresses. Stable because Ascension.exe has NO ASLR.
@@ -98,6 +95,12 @@
 #define LUA_TYPE         0x0084deb0   /* lua_type(state, idx): tt, -1 for invalid index */
 #define LUA_REMOVE       0x0084dc50   /* lua_remove(state, idx): pop (-1) and stack shifts */
 #define LUA_TOBOOLEAN    0x0084e0b0   /* lua_toboolean(state, idx) */
+#define LUA_TONUMBER     0x0084e030   /* lua_tonumber(state, idx) -> double */
+#define LUA_GETTOP       0x0084dbd0   /* lua_gettop(state) -> int */
+#define LUA_RAWGETI      0x0084e670   /* lua_rawgeti(state, idx, n): pushes t[n] */
+#define LUA_PUSHNUMBER   0x0084e2a0   /* lua_pushnumber(state, double): pushes a number */
+#define OBJMGR_LOOKUP    0x004d4db0   /* ClntObjMgrGetObjectPtr(guid_lo, guid_hi, typeMask) -> obj* (CONFIRMED) */
+#define LOS_TRACE        0x007a3b70   /* FUN_007a3b70(start, end, hit, dist, flags, 0). dist=input+output, init 1.0. flags=0x1020124. */
 /* The ExtendedAnticheatMgr singleton address is NOT hardcoded here: Ascension
  * rebuilds Extensions.dll and its .data layout shifts (the 2026-08-13 build
  * moved the singleton ~12KB). find_ac_singleton() below locates it by SHAPE at
@@ -123,13 +126,19 @@
 
 /* Client layout snapshots, 16 bytes each, taken from the current
  * ascension-live/Ascension.exe. Rebuild when the client updates. */
-static const unsigned char EXP_REGISTER[16]   = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x35,0x8c,0xf7,0xd3,0x00,0x6a,0x00,0x50};
-static const unsigned char EXP_READ_STR[16]   = {0x55,0x8b,0xec,0x56,0x8b,0x75,0x08,0x57,0x8b,0x7d,0x0c,0x8b,0xc7,0x8b,0xce,0xe8};
-static const unsigned char EXP_GETFIELD[16]   = {0x55,0x8b,0xec,0x83,0xec,0x10,0x8b,0x45,0x0c,0x53,0x56,0x8b,0x75,0x08,0x57,0x8b};
-static const unsigned char EXP_LUATYPE[16]    = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0xe8,0x02,0xfb,0xff,0xff,0x3d,0x78};
-static const unsigned char EXP_LUAREMOVE[16]  = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x75,0x08,0x8b,0xce,0xe8,0x5f,0xfd,0xff};
-static const unsigned char EXP_TOBOOLEAN[16]  = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0xe8,0x02,0xf9,0xff,0xff,0x8b,0x48};
-static const unsigned char EXP_SECEXEC[16]    = {0x55,0x8b,0xec,0x51,0x83,0x05,0xa0,0x13,0xd4,0x00,0x01,0xa1,0x9c,0x13,0xd4,0x00};
+static const unsigned char EXP_REGISTER_GLOBAL[16] = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x35,0x8c,0xf7,0xd3,0x00,0x6a,0x00,0x50};
+static const unsigned char EXP_READ_STRING_ARG[16] = {0x55,0x8b,0xec,0x56,0x8b,0x75,0x08,0x57,0x8b,0x7d,0x0c,0x8b,0xc7,0x8b,0xce,0xe8};
+static const unsigned char EXP_LUA_GETFIELD[16]    = {0x55,0x8b,0xec,0x83,0xec,0x10,0x8b,0x45,0x0c,0x53,0x56,0x8b,0x75,0x08,0x57,0x8b};
+static const unsigned char EXP_LUA_TYPE[16]        = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0xe8,0x02,0xfb,0xff,0xff,0x3d,0x78};
+static const unsigned char EXP_LUA_REMOVE[16]      = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x75,0x08,0x8b,0xce,0xe8,0x5f,0xfd,0xff};
+static const unsigned char EXP_LUA_TOBOOLEAN[16]   = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0xe8,0x02,0xf9,0xff,0xff,0x8b,0x48};
+static const unsigned char EXP_LUA_TONUMBER[16]    = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0x83,0xec,0x10,0xe8,0x7f,0xf9,0xff};
+static const unsigned char EXP_LUA_GETTOP[16]      = {0x55,0x8b,0xec,0x8b,0x4d,0x08,0x8b,0x41,0x0c,0x2b,0x41,0x10,0xc1,0xf8,0x04,0x5d};
+static const unsigned char EXP_LUA_RAWGETI[16]     = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x75,0x08,0x8b,0xce,0xe8,0x3f,0xf3,0xff};
+static const unsigned char EXP_LUA_PUSHNUMBER[16]  = {0x55,0x8b,0xec,0x8b,0x4d,0x08,0xdd,0x45,0x0c,0x8b,0x41,0x0c,0x8b,0x15,0x9c,0x13};
+static const unsigned char EXP_OBJMGR_LOOKUP[16]   = {0x55,0x8b,0xec,0x64,0x8b,0x0d,0x2c,0x00,0x00,0x00,0xa1,0xbc,0x39,0xd4,0x00,0x8b};
+static const unsigned char EXP_LOS_TRACE[16]       = {0x55,0x8b,0xec,0x83,0xec,0x18,0x8b,0x45,0x18,0x83,0x05,0xc4,0x04,0xce,0x00,0x01};
+static const unsigned char EXP_SECURE_EXEC[16]     = {0x55,0x8b,0xec,0x51,0x83,0x05,0xa0,0x13,0xd4,0x00,0x01,0xa1,0x9c,0x13,0xd4,0x00};
 
 typedef void  (__cdecl *Register_t)(const char*, void*);
 typedef const char* (__cdecl *ReadStr_t)(unsigned int, int, unsigned int*);
@@ -138,6 +147,9 @@ typedef void  (__cdecl *GetField_t)(unsigned int, int, const char*);
 typedef int   (__cdecl *Type_t)(unsigned int, int);
 typedef void  (__cdecl *Remove_t)(unsigned int, int);
 typedef int   (__cdecl *ToBool_t)(unsigned int, int);
+typedef double (__cdecl *ToNumber_t)(unsigned int, int);
+typedef int   (__cdecl *GetTop_t)(unsigned int);
+typedef void  (__cdecl *RawGeti_t)(unsigned int, int, int);
 
 /* g_registered: 1 after the first registration (WM_COMPATIBILITY arrives once).
  * g_last_fs: the FrameScript state pointer at the last time we touched the
@@ -316,12 +328,18 @@ static unsigned long find_ac_singleton(void) {
  * injection, on the setup thread. */
 static int validate_layout(void) {
     struct { unsigned long va; const unsigned char* exp; const char* name; } checks[] = {
-        { REGISTER_GLOBAL, EXP_REGISTER,   "FUN_00817f90" },
-        { READ_STRING_ARG, EXP_READ_STR,   "lua_tolstring" },
-        { LUA_GETFIELD,    EXP_GETFIELD,   "lua_getfield" },
-        { LUA_TYPE,        EXP_LUATYPE,    "lua_type" },
-        { LUA_REMOVE,      EXP_LUAREMOVE,  "lua_remove" },
-        { LUA_TOBOOLEAN,   EXP_TOBOOLEAN,  "lua_toboolean" },
+        { REGISTER_GLOBAL, EXP_REGISTER_GLOBAL, "REGISTER_GLOBAL" },
+        { READ_STRING_ARG, EXP_READ_STRING_ARG, "READ_STRING_ARG" },
+        { LUA_GETFIELD,    EXP_LUA_GETFIELD,    "LUA_GETFIELD" },
+        { LUA_TYPE,        EXP_LUA_TYPE,        "LUA_TYPE" },
+        { LUA_REMOVE,      EXP_LUA_REMOVE,      "LUA_REMOVE" },
+        { LUA_TOBOOLEAN,   EXP_LUA_TOBOOLEAN,   "LUA_TOBOOLEAN" },
+        { LUA_TONUMBER,    EXP_LUA_TONUMBER,    "LUA_TONUMBER" },
+        { LUA_GETTOP,      EXP_LUA_GETTOP,      "LUA_GETTOP" },
+        { LUA_RAWGETI,     EXP_LUA_RAWGETI,     "LUA_RAWGETI" },
+        { LUA_PUSHNUMBER,  EXP_LUA_PUSHNUMBER,  "LUA_PUSHNUMBER" },
+        { OBJMGR_LOOKUP,   EXP_OBJMGR_LOOKUP,   "OBJMGR_LOOKUP" },
+        { LOS_TRACE,       EXP_LOS_TRACE,       "LOS_TRACE" },
     };
     unsigned char b[16];
     int ok = 1, i;
@@ -349,7 +367,7 @@ static int validate_layout(void) {
             }
             /* post-detour bytes are hook-engine owned (INT3 padding etc.) -
              * the displacement is the whole check. */
-        } else if (memcmp(b, EXP_SECEXEC, 16) != 0) {
+        } else if (memcmp(b, EXP_SECURE_EXEC, 16) != 0) {
             logmsg("layout: FUN_00819210 prologue/body mismatch"); ok = 0;
         }
     }
@@ -432,10 +450,10 @@ static const char* choose_owner(void) {
  * Compatibility_body to push back. This wrapper itself can never throw (only
  * assignments + loadstring + pcall), so FUN_00819210 never sees an error. */
 static const char WRAP_PRE[]  = "local f,e=loadstring(\"";
-static const char WRAP_POST[] = "\");local ok,val,err;if f then ok,val,err=pcall(f);if ok then err=nil else err=val;val=nil end else ok=false;err=e end;" RESULT_OK_GLOBAL "=ok;" RESULT_ERR_GLOBAL "=err;" RESULT_VAL_GLOBAL "=val";
-static const char FAIL_NOSCRIPT[] = RESULT_OK_GLOBAL "=false;" RESULT_ERR_GLOBAL "=\"Compatibility: no script argument\";" RESULT_VAL_GLOBAL "=nil";
-static const char FAIL_NUL[]      = RESULT_OK_GLOBAL "=false;" RESULT_ERR_GLOBAL "=\"Compatibility: script contains a NUL byte\";" RESULT_VAL_GLOBAL "=nil";
-static const char FAIL_ALLOC[]    = RESULT_OK_GLOBAL "=false;" RESULT_ERR_GLOBAL "=\"Compatibility: out of memory\";" RESULT_VAL_GLOBAL "=nil";
+static const char WRAP_POST[] = "\");local function cap(...)return select('#',...),{...}end;if f then local n,t=cap(pcall(f));" RESULT_N_GLOBAL "=n;" RESULT_RES_GLOBAL "=t else " RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,e}end";
+static const char FAIL_NOSCRIPT[] = RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,\"Compatibility: no script argument\"}";
+static const char FAIL_NUL[]      = RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,\"Compatibility: script contains a NUL byte\"}";
+static const char FAIL_ALLOC[]    = RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,\"Compatibility: out of memory\"}";
 
 /* Escape arbitrary script bytes into a Lua string literal: backslash and
  * double-quote are backslash-escaped, \n \r \t become escapes, and every
@@ -472,19 +490,64 @@ static char* escape_literal(const char* s, unsigned int len) {
     return buf;
 }
 
-/* Push the stashed (ok, value, error) onto the Lua stack as three values.
- * Lua's poscall reads results BOTTOM-UP from the results block: the FIRST
- * value pushed is the FIRST result the caller sees (FUN_00856010 copies
- * src forward starting at top - n, exactly like stock luaD_poscall). So
- * push ok, then value, then err, and the caller receives the
- * pcall-idiomatic triple (ok, value, err) - the same shape as
- * `local ok, val, err = pcall(f)`. Compatibility_body then returns 3 and the
- * game's wrapper copies all three. */
-static void push_result(unsigned int state) {
+/* Replay the stashed result table onto the Lua stack. Reads Compatibility_N
+ * (count) and Compatibility_Res (table), pushes Res[1..N], removes the table,
+ * returns N. Compatibility_body returns this count so the game's wrapper
+ * copies exactly that many 16-byte slots. */
+static int push_result(unsigned int state) {
     GetField_t gf = (GetField_t)LUA_GETFIELD;
-    gf(state, LUA_GLOBALSINDEX, RESULT_OK_GLOBAL);
-    gf(state, LUA_GLOBALSINDEX, RESULT_VAL_GLOBAL);
-    gf(state, LUA_GLOBALSINDEX, RESULT_ERR_GLOBAL);
+    ToNumber_t tn = (ToNumber_t)LUA_TONUMBER;
+    RawGeti_t rgi = (RawGeti_t)LUA_RAWGETI;
+    GetTop_t top = (GetTop_t)LUA_GETTOP;
+    Remove_t rm = (Remove_t)LUA_REMOVE;
+    int i, n, tbl;
+
+    gf(state, LUA_GLOBALSINDEX, RESULT_N_GLOBAL);
+    n = (int)tn(state, -1);
+    rm(state, -1);
+
+    gf(state, LUA_GLOBALSINDEX, RESULT_RES_GLOBAL);
+    tbl = top(state);
+    for (i = 1; i <= n; i++)
+        rgi(state, tbl, i);
+    rm(state, tbl);
+    return n;
+}
+
+/* Parse a hex GUID (with optional 0x prefix) from a string pointer.
+ * Advances *pp past the hex digits. Returns 1 if at least one digit parsed. */
+static int parse_guid(const char** pp, const char* end, unsigned int* out_lo, unsigned int* out_hi) {
+    unsigned long long full = 0;
+    int found = 0;
+    const char* p = *pp;
+    while (p < end && *p == ' ') p++;
+    if (p + 1 < end && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
+    while (p < end && ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))) {
+        full = (full << 4) | ((*p >= '0' && *p <= '9') ? *p - '0' :
+               (*p >= 'a' && *p <= 'f') ? *p - 'a' + 10 : *p - 'A' + 10);
+        p++; found = 1;
+    }
+    *out_lo = (unsigned int)(full & 0xFFFFFFFF);
+    *out_hi = (unsigned int)(full >> 32);
+    *pp = p;
+    return found;
+}
+
+/* Parse a signed float from a string pointer. Advances *pp. */
+static float parse_float(const char** pp, const char* end) {
+    const char* p = *pp;
+    double val = 0; int neg = 0;
+    while (p < end && *p == ' ') p++;
+    if (p < end && *p == '-') { neg = 1; p++; }
+    while (p < end && *p >= '0' && *p <= '9') { val = val * 10 + (*p - '0'); p++; }
+    if (p < end && *p == '.') {
+        double frac = 0, fdiv = 1;
+        p++;
+        while (p < end && *p >= '0' && *p <= '9') { frac = frac * 10 + (*p - '0'); fdiv *= 10; p++; }
+        val += frac / fdiv;
+    }
+    *pp = p;
+    return (float)(neg ? -val : val);
 }
 
 /* The real implementation behind Compatibility_cb (see the naked stub below for
@@ -506,6 +569,136 @@ static int __cdecl Compatibility_body(unsigned int state) {
     SecExec_t exec = (SecExec_t)SECURE_EXEC;
     unsigned int len = 0;
     const char* script = read_str(state, 1, &len);
+
+    /* ---- "Compatibility_Position <guid_hex>" ---- */
+    {
+        static const char POS_PFX[] = "Compatibility_Position ";
+        if (script && len > sizeof(POS_PFX) - 1 && memcmp(script, POS_PFX, sizeof(POS_PFX) - 1) == 0) {
+            typedef void* (__cdecl *Lookup_t)(unsigned int, unsigned int, unsigned int);
+            typedef void  (__cdecl *PushNum_t)(unsigned int, double);
+            Lookup_t lookup = (Lookup_t)OBJMGR_LOOKUP;
+            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
+            const char* p = script + sizeof(POS_PFX) - 1;
+            const char* e = script + len;
+            unsigned int glo = 0, ghi = 0;
+            void* obj;
+            parse_guid(&p, e, &glo, &ghi);
+            obj = lookup(glo, ghi, 0x08);
+            if (!obj || IsBadReadPtr(obj, 0xDC)) {
+                return 0;
+            }
+            {
+                unsigned long sub = *(unsigned long*)((unsigned char*)obj + 0xD8);
+                if (!sub || IsBadReadPtr((void*)(sub + 0x10), 12)) {
+                    return 0;
+                }
+                {
+                    float* pos = (float*)(sub + 0x10);
+                    pushnum(state, (double)pos[0]);
+                    pushnum(state, (double)pos[1]);
+                    pushnum(state, (double)pos[2]);
+                    return 3;
+                }
+            }
+        }
+    }
+
+    /* ---- "Compatibility_Scale <guid_hex>" ---- */
+    {
+        static const char SCL_PFX[] = "Compatibility_Scale ";
+        if (script && len > sizeof(SCL_PFX) - 1 && memcmp(script, SCL_PFX, sizeof(SCL_PFX) - 1) == 0) {
+            typedef void* (__cdecl *Lookup_t)(unsigned int, unsigned int, unsigned int);
+            typedef void  (__cdecl *PushNum_t)(unsigned int, double);
+            Lookup_t lookup = (Lookup_t)OBJMGR_LOOKUP;
+            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
+            const char* p = script + sizeof(SCL_PFX) - 1;
+            const char* e = script + len;
+            unsigned int glo = 0, ghi = 0;
+            void* obj;
+            float scale = 1.0f;
+            parse_guid(&p, e, &glo, &ghi);
+            obj = lookup(glo, ghi, 0x08);
+            if (!obj || IsBadReadPtr(obj, 0x40)) {
+                pushnum(state, 1.0);
+                return 1;
+            }
+            {
+                unsigned long guid_lo = *(unsigned long*)((unsigned char*)obj + 0x30);
+                unsigned long guid_hi = *(unsigned long*)((unsigned char*)obj + 0x34);
+                int off;
+                for (off = 0; off <= 0x40; off += 4) {
+                    unsigned long ptr = *(unsigned long*)((unsigned char*)obj + off);
+                    if (ptr < 0x10000 || IsBadReadPtr((void*)ptr, 0x14)) continue;
+                    if (*(unsigned long*)ptr == guid_lo && *(unsigned long*)(ptr + 4) == guid_hi) {
+                        if (!IsBadReadPtr((void*)(ptr + 0x10), 4)) {
+                            scale = *(float*)(ptr + 0x10);
+                        }
+                        break;
+                    }
+                }
+            }
+            pushnum(state, (double)scale);
+            return 1;
+        }
+    }
+
+    /* ---- "Compatibility_LOS x1 y1 z1 x2 y2 z2 startScale endScale" ---- */
+    {
+        static const char LOS_PFX[] = "Compatibility_LOS ";
+        if (script && len > sizeof(LOS_PFX) - 1 && memcmp(script, LOS_PFX, sizeof(LOS_PFX) - 1) == 0) {
+            typedef char (__cdecl *RawTrace_t)(float*, float*, float*, float*, unsigned int, int);
+            typedef void (__cdecl *PushNum_t)(unsigned int, double);
+            RawTrace_t raw_trace = (RawTrace_t)LOS_TRACE;
+            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
+            const char* p = script + sizeof(LOS_PFX) - 1;
+            const char* e = script + len;
+            float start[3], end2[3], hit[3], dist;
+            float start_scale, end_scale;
+            char ret;
+            int i;
+            for (i = 0; i < 3; i++) start[i] = parse_float(&p, e);
+            for (i = 0; i < 3; i++) end2[i] = parse_float(&p, e);
+            start_scale = parse_float(&p, e);
+            end_scale = parse_float(&p, e);
+            start[2] += 2.1f * start_scale;
+            end2[2] += 2.1f * end_scale;
+            hit[0] = hit[1] = hit[2] = 0;
+            dist = 1.0f;
+            ret = raw_trace(start, end2, hit, &dist, 0x1020124, 0);
+            pushnum(state, (double)(ret != 0 ? 1.0 : 0.0));
+            return 1;
+        }
+    }
+
+    /* ---- "Compatibility_Probe <guid_hex> [typemask_hex]" (debug, log-only) ---- */
+    {
+        static const char PRB_PFX[] = "Compatibility_Probe ";
+        if (script && len > sizeof(PRB_PFX) - 1 && memcmp(script, PRB_PFX, sizeof(PRB_PFX) - 1) == 0) {
+            typedef void* (__cdecl *Lookup_t)(unsigned int, unsigned int, unsigned int);
+            Lookup_t lookup = (Lookup_t)OBJMGR_LOOKUP;
+            const char* p = script + sizeof(PRB_PFX) - 1;
+            const char* e = script + len;
+            unsigned int glo, ghi, mask = 0x08;
+            void* obj;
+            if (!parse_guid(&p, e, &glo, &ghi)) { logmsg("probe: no GUID"); return 0; }
+            parse_guid(&p, e, &mask, &mask);
+            logmsgf("probe: lookup(%08x%08x, %08x)", ghi, glo, mask);
+            obj = lookup(glo, ghi, mask);
+            logmsgf("probe: result = %08lx", (unsigned long)obj);
+            if (obj && !IsBadReadPtr(obj, 256)) {
+                unsigned char* b = (unsigned char*)obj;
+                int row;
+                for (row = 0; row < 16; row++) {
+                    char h[128]; int pos = 0, col;
+                    pos += wsprintfA(h + pos, "  +%02x: ", row * 16);
+                    for (col = 0; col < 16; col++) pos += wsprintfA(h + pos, "%02x ", b[row * 16 + col]);
+                    logmsg(h);
+                }
+            }
+            return 0;
+        }
+    }
+
     if (!script || len == 0) {
         exec(FAIL_NOSCRIPT, g_owner_name, g_owner_name);
     } else if (len > MAX_SCRIPT_LEN) {                  /* sanity cap on the escape buffer */
@@ -531,8 +724,7 @@ static int __cdecl Compatibility_body(unsigned int state) {
             HeapFree(GetProcessHeap(), 0, esc);
         }
     }
-    push_result(state);
-    return 3;
+    return push_result(state);
 }
 
 /* The REGISTERED callback. The engine reads our code bytes as metadata
@@ -593,16 +785,19 @@ static int run_registration(void) {
     reg("Compatibility", (void*)Compatibility_cb);
     g_registered = 1;
     logmsg("compatibility: Compatibility registered");
-    exec("local ok,err=pcall(Compatibility,'-- compatibility self-test');" RESULT_OK_GLOBAL "=ok;" RESULT_ERR_GLOBAL "=err;" RESULT_VAL_GLOBAL "=nil",
+    exec("local function cap(...)return select('#',...),{...}end;local n,t=cap(pcall(Compatibility,'-- self-test'));" RESULT_N_GLOBAL "=n;" RESULT_RES_GLOBAL "=t",
          g_owner_name, g_owner_name);
     fs = *(volatile unsigned long*)FS_STATE;
     if (fs) {
         GetField_t gf = (GetField_t)LUA_GETFIELD;
         ToBool_t tb = (ToBool_t)LUA_TOBOOLEAN;
+        RawGeti_t rgi = (RawGeti_t)LUA_RAWGETI;
         Remove_t rm = (Remove_t)LUA_REMOVE;
-        gf(fs, LUA_GLOBALSINDEX, RESULT_OK_GLOBAL);
+        gf(fs, LUA_GLOBALSINDEX, RESULT_RES_GLOBAL);
+        rgi(fs, -1, 1);         /* Res[1] = pcall ok */
         logmsgf("compatibility: self-test ok=%d", tb(fs, -1));
-        rm(fs, -1);
+        rm(fs, -1);             /* pop Res[1] */
+        rm(fs, -1);             /* pop Res table */
     }
     g_last_fs = *(volatile unsigned long*)FS_STATE;
     return 1;
