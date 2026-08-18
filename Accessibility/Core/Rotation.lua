@@ -154,16 +154,13 @@ end
 -- can be debugged from the persisted ring buffer.
 function Rotation.CastBest()
 	if Rotation.IsOnGCD() then
-		Log.Write("cast", "blocked: on global cooldown")
-		return false
+		return true
 	end
 	if not Rotation.InQueueWindow() then
-		Log.Write("cast", "blocked: outside the queue window")
 		return false
 	end
-	local rule, reason = Rotation.NextRule()
+	local rule = Rotation.NextRule()
 	if not rule then
-		Log.Write("cast", "blocked: " .. reason)
 		return false
 	end
 	Emit(rule)
