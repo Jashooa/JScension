@@ -41,6 +41,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.exists(condition.unit)
 		end,
 	})
+
 	register("unit_alive", {
 		label = "Unit is alive",
 		fields = { { key = "unit", type = "unit" } },
@@ -51,6 +52,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.isAlive(condition.unit)
 		end,
 	})
+
 	register("unit_target_type", {
 		label = "Unit target type",
 		fields = { { key = "unit", type = "unit" }, { key = "value", type = "target_type" } },
@@ -72,6 +74,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return false
 		end,
 	})
+
 	register("unit_hostile", {
 		label = "Unit is attackable",
 		fields = { { key = "unit", type = "unit" } },
@@ -83,6 +86,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.isAlive(unit) and Unit.canAttack(unit)
 		end,
 	})
+
 	register("unit_is_player", {
 		label = "Unit is a player",
 		fields = { { key = "unit", type = "unit" } },
@@ -94,6 +98,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.exists(unit) and Unit.isPlayer(unit)
 		end,
 	})
+
 	register("unit_classification", {
 		label = "Unit classification",
 		fields = { { key = "unit", type = "unit" }, { key = "value", type = "classification" } },
@@ -106,6 +111,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.classification(unit) == (condition.value)
 		end,
 	})
+
 	register("unit_level", {
 		label = "Unit level comparison",
 		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
@@ -118,6 +124,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Compare.compare(Unit.level(unit), condition.op, tonumber(condition.value))
 		end,
 	})
+
 	register("unit_in_combat", {
 		label = "Unit is in combat",
 		fields = { { key = "unit", type = "unit" } },
@@ -128,6 +135,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.inCombat(condition.unit)
 		end,
 	})
+
 	register("unit_moving", {
 		label = "Unit is moving",
 		fields = { { key = "unit", type = "unit" } },
@@ -139,6 +147,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return speed and speed > 0
 		end,
 	})
+
 	register("unit_standing_still", {
 		label = "Unit is standing still",
 		fields = { { key = "unit", type = "unit" } },
@@ -150,27 +159,29 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return not speed or speed == 0
 		end,
 	})
-	register("unit_is_tanking", {
+
+	register("player_is_tanking_unit", {
 		label = "Player is tanking unit",
 		fields = { { key = "unit", type = "unit" } },
 		describe = function(condition)
-			return ("you are tanking %s"):format(condition.unit or "?")
+			return ("player is tanking %s"):format(condition.unit or "?")
 		end,
 		eval = function(condition)
 			local unit = condition.unit
-			return Unit.exists(unit) and Unit.isTanking(unit)
+			return Unit.exists(unit) and Unit.isTanking("player", unit)
 		end,
 	})
-	register("unit_threat_percent", {
-		label = "Unit threat (scaled percentage)",
+
+	register("player_unit_threat_percent", {
+		label = "Player threat on unit (scaled percentage)",
 		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
 		describe = function(condition)
-			return ("threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
+			return ("player threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
 		end,
 		eval = function(condition)
 			local unit = condition.unit
 			if not Unit.exists(unit) then return false end
-			local pct = Unit.threatPercent(unit)
+			local pct = Unit.threatPercent("player", unit)
 			if not pct then return false end
 			return Compare.compare(pct, condition.op, tonumber(condition.value))
 		end,
@@ -286,6 +297,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Compare.compare(stacks, condition.op, tonumber(condition.value))
 		end,
 	})
+
 	register("unit_aura_remains", {
 		label = "Unit aura time remaining",
 		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
@@ -314,6 +326,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.exists(unit) and Unit.isCasting(unit)
 		end,
 	})
+
 	register("unit_casting_spell", {
 		label = "Unit is casting a specific spell",
 		fields = { { key = "unit", type = "unit" }, { key = "spell", type = "spell" } },
@@ -326,6 +339,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.isCastingSpell(unit, condition.spell)
 		end,
 	})
+
 	register("unit_cast_interruptible", {
 		label = "Unit's cast is interruptible",
 		fields = { { key = "unit", type = "unit" } },
@@ -338,7 +352,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	register("unit_range", {
+	register("unit_spell_range", {
 		label = "Unit is in spell range",
 		fields = { { key = "spell", type = "spell" }, { key = "unit", type = "unit" } },
 		describe = function(condition)
@@ -350,6 +364,22 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Spell.inRange(condition.spell, unit)
 		end,
 	})
+
+	register("unit_range", {
+		label = "Unit distance",
+		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "number" } },
+		describe = function(condition)
+			return ("%s distance %s %s"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not Unit.exists(unit) then return false end
+			local distance = Unit.distance("player", unit)
+			if not distance then return false end
+			return Compare.compare(distance, condition.op, tonumber(condition.value))
+		end,
+	})
+
 	register("spell_ready", {
 		label = "Spell is ready",
 		fields = { { key = "spell", type = "spell" } },
@@ -367,6 +397,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return (start + duration) <= GetTime()
 		end,
 	})
+
 	register("spell_usable", {
 		label = "Spell is usable (known, enough resource)",
 		fields = { { key = "spell", type = "spell" } },
@@ -379,6 +410,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return usable and not noMana
 		end,
 	})
+
 	register("spell_cooldown_remaining", {
 		label = "Spell cooldown remaining (seconds)",
 		fields = { { key = "spell", type = "spell" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
@@ -471,10 +503,11 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	local logicalOrder = {
 		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
-		"unit_moving", "unit_standing_still", "unit_is_tanking", "unit_threat_percent",
+		"unit_moving", "unit_standing_still", "player_is_tanking_unit", "player_unit_threat_percent",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
 		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
-		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_range",
+		"unit_casting", "unit_casting_spell", "unit_cast_interruptible",
+		"unit_spell_range", "unit_range",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",
 		"player_combo_points", "player_shapeshift_form", "modifier_keys", "lua",
 	}

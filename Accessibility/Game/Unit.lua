@@ -28,6 +28,20 @@ function Unit.guid(unit)
 	return UnitGUID(unit)
 end
 
+-- distance returns the 3D distance between two units, or nil when either
+-- position is unavailable.
+function Unit.distance(firstUnit, secondUnit)
+	local Compatibility = ns.Compatibility
+	if not Compatibility then return nil end
+	local firstX, firstY, firstZ = Compatibility.Position(firstUnit)
+	local secondX, secondY, secondZ = Compatibility.Position(secondUnit)
+	if not firstX or not secondX then return nil end
+	local dx = firstX - secondX
+	local dy = firstY - secondY
+	local dz = firstZ - secondZ
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
 -- canAttack returns true when the unit is attackable by the player.
 function Unit.canAttack(unit)
 	return UnitCanAttack("player", unit) and true or false
@@ -100,17 +114,17 @@ function Unit.comboPoints(unit)
 	return GetComboPoints("player", unit)
 end
 
--- threatPercent returns the player's threat on the unit as the scaled
--- percentage (100 = enough to pull), or nil when the unit is not on the
+-- threatPercent returns the source unit's threat on the target as the scaled
+-- percentage (100 = enough to pull), or nil when the target is not on the
 -- threat list.
-function Unit.threatPercent(unit)
-	local _, _, scaledPercent = UnitDetailedThreatSituation("player", unit)
+function Unit.threatPercent(sourceUnit, targetUnit)
+	local _, _, scaledPercent = UnitDetailedThreatSituation(sourceUnit, targetUnit)
 	return scaledPercent
 end
 
--- isTanking returns true when the player is the primary tank of the unit.
-function Unit.isTanking(unit)
-	local status = UnitThreatSituation("player", unit)
+-- isTanking returns true when the source unit is the primary tank of the target.
+function Unit.isTanking(sourceUnit, targetUnit)
+	local status = UnitThreatSituation(sourceUnit, targetUnit)
 	return status ~= nil and status >= 3
 end
 

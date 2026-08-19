@@ -70,12 +70,14 @@ local legacyType = {
 	moving = "unit_moving",
 	standing_still = "unit_standing_still",
 	in_combat = "unit_in_combat",
-	range = "unit_range",
+	range = "unit_spell_range",
 	combo_points = "player_combo_points",
 	shapeshift_form = "player_shapeshift_form",
 	cast_interruptible = "unit_cast_interruptible",
-	threat_pct = "unit_threat_percent",
-	is_tanking = "unit_is_tanking",
+	threat_pct = "player_unit_threat_percent",
+	unit_threat_percent = "player_unit_threat_percent",
+	is_tanking = "player_is_tanking_unit",
+	unit_is_tanking = "player_is_tanking_unit",
 }
 
 -- ResolveType maps a stored type key to its current name, migrating legacy
@@ -85,10 +87,15 @@ local legacyType = {
 function Conditions.ResolveType(key)
 	return legacyType[key] or key
 end
-
+local function resolveConditionType(condition)
+	if type(condition) == "table" and condition.type == "unit_range" and condition.spell ~= nil then
+		return "unit_spell_range"
+	end
+	return Conditions.ResolveType(type(condition) == "table" and condition.type or condition)
+end
 function Conditions.IsComplete(condition)
 	if type(condition) ~= "table" then return false end
-	local conditionType = Conditions.ResolveType(condition.type)
+	local conditionType = resolveConditionType(condition)
 	local def = Registry[conditionType]
 	if type(def) ~= "table" then return false end
 	for i = 1, #def.fields do
@@ -114,8 +121,7 @@ function Conditions.Eval(condition)
 	if type(condition) ~= "table" then return false end
 	-- disabled conditions are skipped
 	if condition.enabled == false then return false end
-	local def = Registry[Conditions.ResolveType(condition.type)]
-	if type(def) ~= "table" or type(def.eval) ~= "function" then return false end
+	local def = Registry[resolveConditionType(condition)]
 	if not Conditions.IsComplete(condition) then return false end
 	local ok, result = pcall(def.eval, condition)
 	if not ok then return false end
@@ -125,7 +131,7 @@ end
 -- Describe renders one condition as one line. It never errors.
 function Conditions.Describe(condition)
 	if type(condition) ~= "table" then return "(bad condition)" end
-	local def = Registry[Conditions.ResolveType(condition.type)]
+	local def = Registry[resolveConditionType(condition)]
 	if type(def) ~= "table" or type(def.describe) ~= "function" then return "(bad condition)" end
 	local ok, text = pcall(def.describe, condition)
 	if not ok or type(text) ~= "string" then return "(bad condition)" end
@@ -147,8 +153,11 @@ end
 -- type is not known.
 function Conditions.Sanitize(condition)
 	if type(condition) ~= "table" then return nil end
-	-- migrate legacy type keys before the registry lookup
-	condition.type = legacyType[condition.type] or condition.type
+	local conditionType = condition.type
+	if conditionType == "unit_range" and condition.spell ~= nil then
+		conditionType = "unit_spell_range"
+	end
+	condition.type = legacyType[conditionType] or conditionType
 	local def = Registry[condition.type]
 	if type(def) ~= "table" then return nil end
 

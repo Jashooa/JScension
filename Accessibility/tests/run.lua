@@ -496,17 +496,17 @@ do
 	local expectedTypes = {
 		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
-		"unit_moving", "unit_standing_still", "unit_is_tanking", "unit_threat_percent",
+		"unit_moving", "unit_standing_still", "player_is_tanking_unit", "player_unit_threat_percent",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
 		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
-		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_range",
+		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_spell_range", "unit_range",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",
 		"player_combo_points", "player_shapeshift_form", "modifier_keys", "lua",
 	}
 	eq("unit health label", Conditions.Registry.unit_health_percent.label, "Unit health percentage")
 	eq("spell ready label", Conditions.Registry.spell_ready.label, "Spell is ready")
-	eq("unit range label", Conditions.Registry.unit_range.label, "Unit is in spell range")
-	eq("aura label stays consistent", Conditions.Registry.unit_aura_present.label, "Unit has aura")
+	eq("spell range label", Conditions.Registry.unit_spell_range.label, "Unit is in spell range")
+	eq("unit range label", Conditions.Registry.unit_range.label, "Unit distance")
 	eq("aura remaining label stays consistent", Conditions.Registry.unit_aura_remains.label, "Unit aura time remaining")
 	local typeList = Conditions.TypeList()
 	local seenTypes = {}
@@ -606,13 +606,13 @@ do
 	ok("rename: target_type -> unit_target_type", Conditions.ResolveType("target_type") == "unit_target_type")
 	ok("rename: moving -> unit_moving", Conditions.ResolveType("moving") == "unit_moving")
 	ok("rename: in_combat -> unit_in_combat", Conditions.ResolveType("in_combat") == "unit_in_combat")
-	ok("rename: range -> unit_range", Conditions.ResolveType("range") == "unit_range")
+	ok("rename: range -> unit_spell_range", Conditions.ResolveType("range") == "unit_spell_range")
 	ok("rename: cooldown_remaining -> spell_cooldown_remaining", Conditions.ResolveType("cooldown_remaining") == "spell_cooldown_remaining")
 	ok("rename: combo_points -> player_combo_points", Conditions.ResolveType("combo_points") == "player_combo_points")
 	ok("rename: shapeshift_form -> player_shapeshift_form", Conditions.ResolveType("shapeshift_form") == "player_shapeshift_form")
 	ok("rename: cast_interruptible -> unit_cast_interruptible", Conditions.ResolveType("cast_interruptible") == "unit_cast_interruptible")
-	ok("rename: threat_pct -> unit_threat_percent", Conditions.ResolveType("threat_pct") == "unit_threat_percent")
-	ok("rename: is_tanking -> unit_is_tanking", Conditions.ResolveType("is_tanking") == "unit_is_tanking")
+	ok("rename: threat_pct -> player_unit_threat_percent", Conditions.ResolveType("threat_pct") == "player_unit_threat_percent")
+	ok("rename: is_tanking -> player_is_tanking_unit", Conditions.ResolveType("is_tanking") == "player_is_tanking_unit")
 	ok("rename: aura_remains -> unit_aura_remains", Conditions.ResolveType("aura_remains") == "unit_aura_remains")
 	-- legacy renames evaluate after migration without a sanitize pass
 	ok("legacy in_combat evals", Conditions.Eval({ type = "in_combat", unit = "player" }) == false)
@@ -713,13 +713,25 @@ do
 	ok("unit_classification elite passes", Conditions.Eval({ type = "unit_classification", unit = "target", value = "elite" }) == true)
 	ok("unit_classification worldboss fails", Conditions.Eval({ type = "unit_classification", unit = "target", value = "worldboss" }) == false)
 
+	-- unit_spell_range uses a spell-range query; unit_range compares distance.
+	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
+	setUnit("player", { exists = true, dead = false, guid = "0x1111" })
+	setUnit("target", { exists = true, dead = false, guid = "0x2222", hostile = true })
+	local distance = ns.Unit.distance("player", "target")
+	ok("Unit.distance uses shim positions", distance > 5 and distance < 6)
+	ok("unit_range compares unit distance", Conditions.Eval({ type = "unit_range", unit = "target", op = "<", value = 6 }) == true)
+	ok("unit_range rejects distant unit", Conditions.Eval({ type = "unit_range", unit = "target", op = ">", value = 6 }) == false)
+	ok("unit_spell_range evaluates spell range", Conditions.Eval({ type = "unit_spell_range", spell = "Fireball", unit = "target" }) == true)
+	local migratedSpellRange = Conditions.Sanitize({ type = "unit_range", spell = "Fireball", unit = "target" })
+	eq("old unit_range migrates to unit_spell_range", migratedSpellRange.type, "unit_spell_range")
+
 	-- threat_pct + is_tanking
 	setUnit("target", { exists = true, dead = false, hostile = true, threatPercent = 120, isTanking = true })
-	ok("unit_threat_percent >= 100 passes", Conditions.Eval({ type = "unit_threat_percent", unit = "target", op = ">=", value = 100 }) == true)
-	ok("unit_is_tanking passes when tanking", Conditions.Eval({ type = "unit_is_tanking", unit = "target" }) == true)
+	ok("player_unit_threat_percent >= 100 passes", Conditions.Eval({ type = "player_unit_threat_percent", unit = "target", op = ">=", value = 100 }) == true)
+	ok("player_is_tanking_unit passes when tanking", Conditions.Eval({ type = "player_is_tanking_unit", unit = "target" }) == true)
 	setUnit("target", { exists = true, dead = false, hostile = true, threatPercent = 50, isTanking = false })
-	ok("unit_threat_percent >= 100 fails at 50", Conditions.Eval({ type = "unit_threat_percent", unit = "target", op = ">=", value = 100 }) == false)
-	ok("unit_is_tanking fails when not tanking", Conditions.Eval({ type = "unit_is_tanking", unit = "target" }) == false)
+	ok("player_unit_threat_percent >= 100 fails at 50", Conditions.Eval({ type = "player_unit_threat_percent", unit = "target", op = ">=", value = 100 }) == false)
+	ok("player_is_tanking_unit fails when not tanking", Conditions.Eval({ type = "player_is_tanking_unit", unit = "target" }) == false)
 
 	-- aura_remains: presence implied, compares remaining
 	state.auras.target = { { kind = "buff", name = "Frost Armor", count = 1, remaining = 5, mine = true } }
