@@ -45,6 +45,17 @@ fake.Compatibility = function(script)
 	scripts[#scripts + 1] = script
 	if script:find("issecure", 1, true) then
 		return true, (state.secure and 1 or nil), nil
+	elseif script:find("Compatibility_Position ", 1, true) then
+		local guid = script:match("Compatibility_Position%s+(.+)$")
+		if guid == "0x1111" then return 1.25, 2.5, 3.75 end
+		return 4.5, 5.75, 6.25
+	elseif script:find("Compatibility_Scale ", 1, true) then
+		local guid = script:match("Compatibility_Scale%s+(.+)$")
+		return guid == "0x1111" and 1.0 or 1.5
+	elseif script:find("Compatibility_LOS ", 1, true) then
+		return 1
+	elseif script:find("Compatibility_PlaceGround ", 1, true) then
+		return 1
 	end
 	return true, true, nil
 end
@@ -71,6 +82,7 @@ end
 
 fake.GetTime = function() return state.time end
 fake.UnitExists = function(u) local x = state.units[u]; return x and x.exists end
+fake.UnitGUID = function(u) local x = state.units[u]; return x and x.guid end
 fake.UnitIsDeadOrGhost = function(u) local x = state.units[u]; return x and x.dead end
 fake.UnitHealth = function(u) local x = state.units[u]; return x and x.health or 0 end
 fake.UnitHealthMax = function(u) local x = state.units[u]; return x and x.maxHealth or 0 end
@@ -104,7 +116,7 @@ end
 fake.UnitChannelInfo = function(u)
 	local x = state.units[u]
 	if x and x.channelEndMs then
-		return x.channelSpell or "Channel", "", "", 0, 0, x.channelEndMs, x.notInterruptible or false
+		return x.channelSpell or "Channel", "", "", 0, 0, x.channelEndMs, false, x.notInterruptible or false
 	end
 	return nil
 end
@@ -250,6 +262,7 @@ loadModule(ROOT .. "Utils/Constants.lua", ns)
 loadModule(ROOT .. "Utils/Compare.lua", ns)
 loadModule(ROOT .. "Utils/Coerce.lua", ns)
 loadModule(ROOT .. "Utils/Log.lua", ns)
+loadModule(ROOT .. "Game/CastState.lua", ns)
 loadModule(ROOT .. "Game/Unit.lua", ns)
 loadModule(ROOT .. "Game/Spell.lua", ns)
 loadModule(ROOT .. "Game/Aura.lua", ns)
@@ -259,6 +272,7 @@ loadModule(ROOT .. "Game/Input.lua", ns)
 loadModule(ROOT .. "Core/Compatibility.lua", ns)
 loadModule(ROOT .. "Core/Profile.lua", ns)
 loadModule(ROOT .. "Utils/SpellPicker.lua", ns)
+loadModule(ROOT .. "Core/ConditionDefinitions.lua", ns)
 loadModule(ROOT .. "Core/Conditions.lua", ns)
 loadModule(ROOT .. "Core/Rotation.lua", ns)
 
@@ -341,6 +355,61 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- Cast and compatibility command boundary tests
+-- ---------------------------------------------------------------------------
+
+do
+	local Cast = ns.Cast
+	local CastState = ns.CastState
+	local Unit = ns.Unit
+	state.units.player = { exists = true, guid = "0x1111", castingEndMs = 900, castingSpell = "Fireball" }
+	local normal = CastState.Read("player")
+	ok("normal cast state name", normal ~= nil and normal.name == "Fireball")
+	eq("normal cast end time", normal.endTimeMilliseconds, 900)
+	ok("normal cast interruptible", normal.interruptible == true)
+	eq("Cast.currentCast name", Cast.currentCast(), "Fireball")
+	eq("Cast.currentCast end time", select(2, Cast.currentCast()), 900)
+	ok("Unit.isCasting uses shared state", Unit.isCasting("player") == true)
+	ok("Unit.isCastingSpell uses shared state", Unit.isCastingSpell("player", "Fireball") == true)
+	ok("Unit.castInterruptible uses shared state", Unit.castInterruptible("player") == true)
+
+	state.units.player = { exists = true, guid = "0x1111", castingEndMs = 900, castingSpell = "Fireball", notInterruptible = true }
+	ok("uninterruptible cast state", Unit.castInterruptible("player") == false)
+	state.units.player = { exists = true, guid = "0x1111", channelEndMs = 1200, channelSpell = "Mind Flay" }
+	local channel = CastState.Read("player")
+	ok("channel state used when no normal cast", channel ~= nil and channel.name == "Mind Flay" and channel.endTimeMilliseconds == 1200)
+	ok("channel interruptible", Unit.castInterruptible("player") == true)
+	state.units.player = { exists = true, guid = "0x1111" }
+	ok("idle cast state is nil", CastState.Read("player") == nil and Cast.currentCast() == nil)
+
+	state.units.target = { exists = true, guid = "0x2222" }
+	clearScripts()
+	local x, y, z = Compatibility.Position("target")
+	eq("Position x", x, 4.5)
+	eq("Position y", y, 5.75)
+	eq("Position z", z, 6.25)
+	eq("Position command", scripts[1], "Compatibility_Position 0x2222")
+
+	clearScripts()
+	eq("Scale result", Compatibility.Scale("target"), 1.5)
+	eq("Scale command", scripts[1], "Compatibility_Scale 0x2222")
+
+	clearScripts()
+	Compatibility.CastGround("Fireball", "target")
+	eq("ground position command", scripts[1], "Compatibility_Position 0x2222")
+	eq("ground placement command", scripts[2], "Compatibility_PlaceGround 4.500000 5.750000 6.250000")
+
+	clearScripts()
+	local los = Compatibility.LoS("target")
+	ok("LoS result", los == 1)
+	eq("LoS player position command", scripts[1], "Compatibility_Position 0x1111")
+	eq("LoS target position command", scripts[2], "Compatibility_Position 0x2222")
+	eq("LoS player scale command", scripts[3], "Compatibility_Scale 0x1111")
+	eq("LoS target scale command", scripts[4], "Compatibility_Scale 0x2222")
+	eq("LoS command", scripts[5], "Compatibility_LOS 1.250000 2.500000 3.750000 4.500000 5.750000 6.250000 1.000000 1.500000")
+end
+
+-- ---------------------------------------------------------------------------
 -- SpellPicker tests
 -- ---------------------------------------------------------------------------
 
@@ -392,6 +461,7 @@ do
 	eq("pulseInterval clamped", p.pulseInterval, 0.05)
 	eq("gcdProbeSpell coerced", p.gcdProbeSpell, "")
 	eq("queueWindow defaulted", p.queueWindow, 0.4)
+	eq("antiSpamWindow defaulted", p.antiSpamWindow, 1.0)
 	eq("legacy rules migrated to one rotation", #p.rotations, 1)
 	eq("migrated rotation named Default", p.rotations[1].name, "Default")
 	eq("active set to Default", p.active, "Default")
@@ -409,6 +479,12 @@ do
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
 	eq("button enabled defaulted", p.button.enabled, true)
+	local lowAnti = { antiSpamWindow = -1 }
+	Profile.sanitizeProfile(lowAnti)
+	eq("antiSpamWindow clamps low", lowAnti.antiSpamWindow, 0.0)
+	local highAnti = { antiSpamWindow = 3 }
+	Profile.sanitizeProfile(highAnti)
+	eq("antiSpamWindow clamps high", highAnti.antiSpamWindow, 2.0)
 end
 
 -- ---------------------------------------------------------------------------
@@ -417,6 +493,25 @@ end
 
 do
 	ok("Eval unknown type fails closed", Conditions.Eval({ type = "nope" }) == false)
+	local expectedTypes = {
+		"unit_target_type", "unit_health_percent", "unit_health",
+		"unit_power_percent", "unit_power", "unit_aura_present",
+		"unit_aura_missing", "unit_aura_stacks", "spell_ready", "spell_usable",
+		"spell_cooldown_remaining", "unit_exists", "unit_hostile", "unit_casting",
+		"unit_moving", "unit_standing_still", "unit_in_combat", "unit_range",
+		"player_combo_points", "player_shapeshift_form", "unit_casting_spell",
+		"unit_cast_interruptible", "unit_level", "unit_is_player",
+		"unit_classification", "unit_threat_percent", "unit_is_tanking",
+		"unit_aura_remains", "modifier_keys", "lua",
+	}
+	local typeList = Conditions.TypeList()
+	local seenTypes = {}
+	local orderedTypes = #typeList == #expectedTypes
+	for i = 1, #typeList do
+		orderedTypes = orderedTypes and typeList[i].key == expectedTypes[i] and not seenTypes[typeList[i].key]
+		seenTypes[typeList[i].key] = true
+	end
+	ok("condition registry order is stable and unique", orderedTypes)
 	ok("Eval non-table fails closed", Conditions.Eval("x") == false)
 
 	-- target_type enemy
@@ -482,6 +577,8 @@ do
 	local clean = Conditions.Sanitize({ type = "unit_health_percent", unit = "target", op = "<", value = 30, junk = "x" })
 	ok("Sanitize keeps declared fields", clean ~= nil and clean.unit == "target" and clean.op == "<" and clean.value == 30)
 	ok("Sanitize drops unknown fields", clean ~= nil and clean.junk == nil)
+	local disabledClean = Conditions.Sanitize({ type = "unit_in_combat", unit = "player", enabled = false })
+	eq("Sanitize preserves condition enabled", disabledClean.enabled, false)
 	ok("Sanitize drops unknown type", Conditions.Sanitize({ type = "nope" }) == nil)
 
 	-- legacy type keys from before the rename migrate on sanitize
@@ -516,6 +613,24 @@ do
 	ok("incomplete condition fails (empty aura)", Conditions.Eval({ type = "unit_aura_missing", unit = "target", kind = "debuff" }) == false)
 	-- optional fields (power, mine) do not make a condition incomplete
 	ok("optional mine=nil passes", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = "NotPresent", kind = "buff" }) == true)
+	-- ordered condition descriptors are the shared editor and runtime contract
+	local function fieldKeys(conditionType)
+		local keys = {}
+		local fields = Conditions.Fields(conditionType)
+		for i = 1, #fields do keys[i] = fields[i].key end
+		return table.concat(keys, ",")
+	end
+	eq("unit_power_percent field order", fieldKeys("unit_power_percent"), "unit,power,op,value")
+	eq("spell cooldown field order", fieldKeys("spell_cooldown_remaining"), "spell,op,value")
+	eq("player combo field order", fieldKeys("player_combo_points"), "op,value")
+	eq("modifier field order", fieldKeys("modifier_keys"), "key")
+	eq("optional power descriptor", Conditions.Fields("unit_power_percent")[2].type, "power")
+	eq("condition field label", Conditions.FieldLabel("target_type"), "target type")
+	ok("unknown condition fields are nil", Conditions.Fields("not_a_condition") == nil)
+	ok("IsComplete rejects unknown condition", Conditions.IsComplete({ type = "not_a_condition" }) == false)
+	ok("IsComplete matches incomplete Eval", Conditions.IsComplete({ type = "unit_in_combat" }) == false and
+		Conditions.Eval({ type = "unit_in_combat" }) == false)
+	ok("IsComplete matches complete Eval shape", Conditions.IsComplete({ type = "unit_in_combat", unit = "player" }) == true)
 
 	-- raw health and power values, and the power pool selector. The player
 	-- has mana 100/120 and rage 22/100 (hybrid, per the live probe).
@@ -644,7 +759,7 @@ local function resetRotation()
 	scenarioTime = scenarioTime + 1000
 	state.time = scenarioTime
 	state.secure = true
-	state.inCombat = false
+	prof().antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW
 	setKnown({ "Fireball", "Renew", "probe" })
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
 	setSpell("Renew", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
@@ -707,16 +822,14 @@ ok("out of range blocks the cast", Rotation.CastBest() == false)
 state.inCombat = false
 ok("failing condition blocks the cast", Rotation.CastBest() == false)
 
--- anti-spam: cast, then advance past the GCD but inside the 2.5s window
+-- anti-spam: cast, then advance past the GCD but inside the 1.0s window
 resetRotation()
 local t0 = state.time
 ok("first cast succeeds", Rotation.CastBest() == true)
-state.time = t0 + 2
+state.time = t0 + 0.5
 ok("anti-spam blocks a fast re-cast", Rotation.CastBest() == false)
-state.time = t0 + 3
+state.time = t0 + 1.1
 ok("cast succeeds after the anti-spam window", Rotation.CastBest() == true)
-
--- priority walk: a blocked first rule must yield to the next
 resetRotation()
 setRules({
 	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },
@@ -756,6 +869,31 @@ setRules({
 })
 state.inCombat = false
 ok("NextRule nil when every rule blocked", Rotation.NextRule() == nil)
+-- selection and simulation are read-only with respect to cast state.
+resetRotation()
+local selectedBefore = Rotation.NextRule()
+Rotation.Simulate()
+local selectedAfter = Rotation.NextRule()
+ok("simulation preserves next selection", selectedBefore and selectedAfter and
+	selectedBefore.spell == selectedAfter.spell)
+
+local simulationEvaluations = 0
+local previousCounter = Conditions.Registry.simulation_counter
+Conditions.Registry.simulation_counter = {
+	fields = {},
+	eval = function()
+		simulationEvaluations = simulationEvaluations + 1
+		return true
+	end,
+}
+resetRotation()
+setRules({ { spell = "Fireball", enabled = true, unit = "target",
+	conditions = { { type = "simulation_counter" } } } })
+local simulationLines = Rotation.Simulate()
+ok("simulation reports passing rule", simulationLines[1]:find("would cast", 1, true) ~= nil)
+eq("simulation evaluates each condition once", simulationEvaluations, 1)
+Conditions.Registry.simulation_counter = previousCounter
+
 
 -- spell queue window: casting normally blocks, but inside the window the
 -- cast is sent early so the client queues it. state.time is left at the
@@ -785,7 +923,7 @@ clearScripts()
 ok("mid-channel inside queue window casts", Rotation.CastBest() == true)
 
 -- anti-spam must NOT block re-queueing a cast-time spell inside the window
--- (the cast itself is the spacer, and the 2.5s window would break the queue)
+-- (the cast itself is the spacer, and the 1.0s window would break the queue)
 resetRotation()
 setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, castMs = 2000 })
 local tq = state.time
@@ -797,15 +935,25 @@ clearScripts()
 ok("cast-time spell re-queues inside window (anti-spam bypassed)", Rotation.CastBest() == true)
 eq("re-queue emitted the same spell", scripts[1], 'CastSpellByName("Fireball")')
 
--- an instant spell is still anti-spammed: 1.6s after casting it, blocked
+-- an instant spell is still anti-spammed: 0.5s after casting it, blocked
 resetRotation()
 setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })  -- instant
 local ti = state.time
 ok("instant spell first cast succeeds", Rotation.CastBest() == true)
-state.time = ti + 1.6
+state.time = ti + 0.5
 ok("instant spell still anti-spammed", Rotation.CastBest() == false)
-state.time = ti + 3
+state.time = ti + 1.1
 ok("instant spell casts again after the window", Rotation.CastBest() == true)
+
+-- a zero anti-spam window permits an immediate second instant cast when the
+-- explicit GCD probe is clear.
+resetRotation()
+prof().gcdProbeSpell = "probe"
+prof().antiSpamWindow = 0.0
+local immediateTime = state.time
+ok("zero anti-spam first cast succeeds", Rotation.CastBest() == true)
+state.time = immediateTime
+ok("zero anti-spam permits immediate recast", Rotation.CastBest() == true)
 
 -- aura condition accepts a numeric spell ID in the aura field
 state.auras.target = {}
@@ -906,6 +1054,67 @@ do
 	eq("moveRule shifts middle", rotation.rules[1].spell, "Two")
 	ok("moveRule clamps low", (function() Profile.moveRule(rotation, 1, 0); return rotation.rules[1].spell == "Two" end)())
 	ok("moveRule clamps high", (function() Profile.moveRule(rotation, 1, 99); return rotation.rules[3].spell == "One" end)())
+end
+
+-- ---------------------------------------------------------------------------
+-- Profile mutation boundary tests
+-- ---------------------------------------------------------------------------
+
+do
+	local rotation = Profile.newRotation("First")
+	local duplicate = Profile.newRotation("Second")
+	local rule = Profile.newRule()
+	local condition = Profile.newCondition()
+	eq("newRotation owns name", rotation.name, "First")
+	eq("newRotation owns rules", #rotation.rules, 0)
+	eq("newRule default spell", rule.spell, "")
+	eq("newRule default enabled", rule.enabled, true)
+	eq("newCondition default type", condition.type, "unit_target_type")
+	eq("newCondition default enabled", condition.enabled, true)
+
+	Profile.setRuleEnabled(rule, false)
+	Profile.setRuleName(rule, "Primary")
+	Profile.setRuleSpell(rule, "Fireball")
+	Profile.setRuleUnit(rule, "target")
+	eq("rule setters persist", rule.enabled, false)
+	eq("rule name setter persists", rule.name, "Primary")
+	eq("rule spell setter persists", rule.spell, "Fireball")
+	eq("rule unit setter persists", rule.unit, "target")
+
+	Profile.setConditionField(condition, "unit", "target")
+	Profile.setConditionField(condition, "value", "enemy")
+	Profile.setConditionType(condition, "unit_health_percent")
+	ok("condition type setter drops stale fields", condition.type == "unit_health_percent" and condition.value == nil and condition.unit == "target")
+	Profile.setConditionEnabled(condition, false)
+	eq("condition enabled setter persists", condition.enabled, false)
+
+	local live = Profile.current()
+	live.rotations = { rotation, duplicate }
+	live.active = "First"
+	live.button = {}
+	Profile.setAutoEnabled(true)
+	Profile.setGcdProbeSpell("Fireball")
+	Profile.setPulseInterval(0)
+	Profile.setQueueWindow(9)
+	Profile.setAntiSpamWindow(9)
+	eq("auto setter persists", live.auto, true)
+	eq("GCD setter persists", live.gcdProbeSpell, "Fireball")
+	eq("pulse setter clamps", live.pulseInterval, 0.05)
+	eq("queue setter clamps", live.queueWindow, 1.0)
+	eq("anti-spam setter clamps", live.antiSpamWindow, 2.0)
+	Profile.setButtonEnabled(live.button, false)
+	Profile.setButtonLocked(live.button, true)
+	Profile.setButtonPosition(live.button, "TOPLEFT", "BOTTOMRIGHT", 12, -8)
+	Profile.setButtonScale(live.button, 9)
+	eq("button enabled setter persists", live.button.enabled, false)
+	eq("button locked setter persists", live.button.locked, true)
+	eq("button position setter persists", live.button.point, "TOPLEFT")
+	eq("button relative position persists", live.button.relativePoint, "BOTTOMRIGHT")
+	eq("button x persists", live.button.x, 12)
+	eq("button y persists", live.button.y, -8)
+	eq("button scale clamps", live.button.scale, 2.0)
+	Profile.renameRotation(rotation, "Renamed")
+	eq("renamed active rotation remains active", live.active, "Renamed")
 end
 
 -- ---------------------------------------------------------------------------

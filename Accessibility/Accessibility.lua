@@ -108,14 +108,14 @@ function A:PulseOnce()
 end
 
 function A:ToggleAuto()
-	if self.db.profile.auto then
-		self.db.profile.auto = false
-		self:StopPulse()
-		self:Print("auto off")
-	else
-		self.db.profile.auto = true
+	local enabled = not Profile.current().auto
+	Profile.setAutoEnabled(enabled)
+	if enabled then
 		self:StartPulse()
 		self:Print("auto on")
+	else
+		self:StopPulse()
+		self:Print("auto off")
 	end
 	ns.Config.NotifyOptionsChanged()
 end

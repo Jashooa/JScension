@@ -23,10 +23,8 @@ assert(Compatibility and Conditions and SpellPicker and Profile and Cooldown
 	and Cast and Spell and Unit and Constants and Log,
 	"load order: Core/Rotation before its dependencies")
 
--- A no-cooldown spell must wait this long before it can cast again. The
--- global cooldown spaces on-GCD spells; this window spaces off-GCD instant
--- spells so they do not fire on every tick.
-local ANTI_SPAM_WINDOW = 2.5
+-- The anti-spam window spaces repeated no-cooldown instant casts. The
+-- sanitized profile owns its value so users can tune it without code changes.
 
 local lastCastAt = {}       -- spell name -> time of last attempt
 local lastAttemptTime = 0   -- time of last attempt (GCD fallback)
@@ -36,21 +34,22 @@ Rotation.lastResult = { spell = nil, ok = nil, value = nil, err = nil }
 
 -- IsOnGCD returns true while the global cooldown is active. It probes a known
 -- spell when one is configured; otherwise it uses the last-cast time.
-function Rotation.IsOnGCD()
+function Rotation.IsOnGCD(currentTime)
+	currentTime = currentTime or GetTime()
 	local probe = Profile.current().gcdProbeSpell
 	if probe and probe ~= "" then
 		local start, duration = Spell.cooldown(probe)
 		if Cooldown.isGCD(start, duration) then
-			return (start + duration) > GetTime()
+			return (start + duration) > currentTime
 		end
 		return false
 	end
-	return (GetTime() - lastAttemptTime) < Constants.GCD_DURATION
+	return (currentTime - lastAttemptTime) < Constants.GCD_DURATION
 end
 
--- RulePasses runs the per-spell gates. The global-cooldown gate is checked
+-- evaluateRule runs the per-spell gates. The global-cooldown gate is checked
 -- once before the walk, not here.
-local function RulePasses(rule)
+local function evaluateRule(rule, currentTime)
 	local unit = rule.unit or "target"
 
 	-- gate 2: the target unit must exist and be alive (skip for self-cast)
@@ -75,7 +74,7 @@ local function RulePasses(rule)
 		-- a real cooldown is running: clear the anti-spam marker, the cooldown
 		-- gate already spaces this spell
 		lastCastAt[rule.spell] = nil
-		if (start + duration) > GetTime() then return false, "on cooldown" end
+		if currentTime < (start + duration) then return false, "on cooldown" end
 	end
 
 	-- gate 7: the target must be in range (skip for self-cast and
@@ -86,10 +85,10 @@ local function RulePasses(rule)
 	end
 
 	-- gate 8: every condition must pass
-	local conds = rule.conditions
-	if conds then
-		for i = 1, #conds do
-			if not Conditions.Eval(conds[i]) then return false, "condition" end
+	local conditions = rule.conditions
+	if conditions then
+		for i = 1, #conditions do
+			if not Conditions.Eval(conditions[i]) then return false, "condition" end
 		end
 	end
 
@@ -103,47 +102,52 @@ local function RulePasses(rule)
 	local castName = Cast.currentCast()
 	if castName then castName = Spell.stripRank(castName) end
 	local refName = Spell.stripRank(rule.spell)
+	local antiSpamWindow = Profile.current().antiSpamWindow
 	if not (castMs and castMs > 0) and castName ~= refName then
-		local t = lastCastAt[rule.spell]
-		if t and (GetTime() - t) < ANTI_SPAM_WINDOW then return false, "anti-spam" end
+		local lastAttemptAt = lastCastAt[rule.spell]
+		if lastAttemptAt and (currentTime - lastAttemptAt) < antiSpamWindow then
+			return false, "anti-spam"
+		end
 	end
 
 	return true
 end
 
--- Emit attempts the cast and records the attempt for the GCD and anti-spam
+-- emitRule attempts the cast and records the attempt for the GCD and anti-spam
 -- gates. It stores the result for the status command.
-local function Emit(rule)
+local function emitRule(rule, currentTime)
 	local unit = rule.unit or "target"
-	local now = GetTime()
 
-	lastCastAt[rule.spell] = now
-	lastAttemptTime = now
+	lastCastAt[rule.spell] = currentTime
+	lastAttemptTime = currentTime
 
 	local ok, value, err = Compatibility.Cast(rule.spell, unit)
 	return ok, value, err
 end
 
--- NextRule returns the first rule that would pass every gate, or nil. It is
--- the same walk CastBest performs, without casting; the button uses it to show
--- the spell that a click would actually cast (the first PASSING rule, not the
--- first enabled one - an earlier blocked rule must not pin the icon).
--- The second return is a short reason ("player dead", "not compatible", or
--- "no passing rule") so the caller can log it without re-deriving the checks.
-function Rotation.NextRule()
-	local profile = Profile.current()
-	if Unit.isDeadOrGhost("player") then return nil, "player dead" end
-	if not Compatibility.IsCompatible() then return nil, "not compatible" end
-
+local function selectNextRule(currentTime)
 	local rules = Profile.activeRules()
 	for i = 1, #rules do
 		local rule = rules[i]
 		if rule.enabled and rule.spell and rule.spell ~= "" then
-			if RulePasses(rule) then
-				return rule
-			end
+			local passes = evaluateRule(rule, currentTime)
+			if passes then return rule end
 		end
 	end
+	return nil
+end
+
+-- NextRule returns the first rule that would pass every gate, or nil. It is
+-- the same walk CastBest performs, without casting; the button uses it to show
+-- the spell that a click would actually cast.
+-- The second return is a short reason ("player dead", "not compatible", or
+-- "no passing rule") so the caller can log it without re-deriving the checks.
+function Rotation.NextRule()
+	local currentTime = GetTime()
+	if Unit.isDeadOrGhost("player") then return nil, "player dead" end
+	if not Compatibility.IsCompatible() then return nil, "not compatible" end
+	local rule = selectNextRule(currentTime)
+	if rule then return rule end
 	return nil, "no passing rule"
 end
 
@@ -153,20 +157,27 @@ function Rotation.InQueueWindow()
 end
 
 -- CastBest casts the first rule that passes every gate. It returns true when
--- a cast was attempted, false otherwise. The decision is logged so a session
--- can be debugged from the persisted ring buffer.
 function Rotation.CastBest()
-	if Rotation.IsOnGCD() then
-		return true
+	local currentTime = GetTime()
+	if Rotation.IsOnGCD(currentTime) then
+		return false
 	end
 	if not Rotation.InQueueWindow() then
 		return false
 	end
-	local rule = Rotation.NextRule()
+	if Unit.isDeadOrGhost("player") then
+		Log.Write("cast", "player dead")
+		return false
+	end
+	if not Compatibility.IsCompatible() then
+		Log.Write("cast", "not compatible")
+		return false
+	end
+	local rule = selectNextRule(currentTime)
 	if not rule then
 		return false
 	end
-	Emit(rule)
+	emitRule(rule, currentTime)
 	local label = (rule.name and rule.name ~= "") and rule.name or rule.spell
 	Log.Write("cast", ("cast %s (rule %s)"):format(rule.spell, label))
 	return true
@@ -181,20 +192,19 @@ function Rotation.Simulate()
 		lines[1] = "no rules"
 		return lines
 	end
+	local currentTime = GetTime()
 	for i = 1, #rules do
 		local rule = rules[i]
-		local state
+		local status
 		if not rule.enabled then
-			state = "disabled"
+			status = "disabled"
 		elseif not rule.spell or rule.spell == "" then
-			state = "no spell"
-		elseif RulePasses(rule) then
-			state = "would cast"
+			status = "no spell"
 		else
-			local _, reason = RulePasses(rule)
-			state = "blocked: " .. (reason or "?")
+			local passes, reason = evaluateRule(rule, currentTime)
+			status = passes and "would cast" or ("blocked: " .. (reason or "?"))
 		end
-		lines[#lines + 1] = ("%d. %s: %s"):format(i, rule.spell, state)
+		lines[#lines + 1] = ("%d. %s: %s"):format(i, rule.spell, status)
 	end
 	return lines
 end

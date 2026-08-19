@@ -6,6 +6,8 @@
 
 local _, ns = ...
 local Compatibility = {}
+local Unit = ns.Unit
+assert(Unit, "load order: Core/Compatibility after Game/Unit")
 
 -- ---------------------------------------------------------------------------
 -- status
@@ -75,6 +77,9 @@ end
 local function pack_n(...)
 	return { ... }, select("#", ...)
 end
+local function runCommand(command, ...)
+	return _G.Compatibility(string.format(command, ...))
+end
 
 function Compatibility.Call(fmt, ...)
 	local n = select("#", ...)
@@ -84,9 +89,9 @@ function Compatibility.Call(fmt, ...)
 			args[i] = string.format("%q", args[i])
 		end
 	end
-	local r, rn = pack_n(_G.Compatibility(string.format(fmt, unpack(args, 1, n))))
-	if not r[1] then return nil, r[2] end
-	return unpack(r, 2, rn)
+	local results, resultCount = pack_n(_G.Compatibility(string.format(fmt, unpack(args, 1, n))))
+	if not results[1] then return nil, results[2] end
+	return unpack(results, 2, resultCount)
 end
 
 -- ---------------------------------------------------------------------------
@@ -100,7 +105,7 @@ end
 function Compatibility.CastGround(spell, unit)
 	local x, y, z = Compatibility.Position(unit)
 	if not x then return end
-	_G.Compatibility(string.format("Compatibility_PlaceGround %.1f %.1f %.1f", x, y, z))
+	runCommand("Compatibility_PlaceGround %f %f %f", x, y, z)
 end
 
 -- Cast runs CastSpellByName under the trusted owner. unit is the target
@@ -130,16 +135,16 @@ end
 -- Position returns the world position (x, y, z) of a unit by GUID lookup
 -- through the shim's object manager. Returns nil if the unit is not found.
 function Compatibility.Position(unit)
-	local guid = UnitGUID(unit)
+	local guid = Unit.guid(unit)
 	if not guid then return end
-	return _G.Compatibility("Compatibility_Position " .. guid)
+	return runCommand("Compatibility_Position %s", guid)
 end
 
 -- Scale returns the OBJECT_FIELD_SCALE_X of a unit, or nil if not found.
 function Compatibility.Scale(unit)
-	local guid = UnitGUID(unit)
+	local guid = Unit.guid(unit)
 	if not guid then return end
-	return _G.Compatibility("Compatibility_Scale " .. guid)
+	return runCommand("Compatibility_Scale %s", guid)
 end
 
 -- LoS returns true if there is a clear line of sight between the player and
@@ -151,9 +156,9 @@ function Compatibility.LoS(unit)
 	if not ux then return end
 	local ps = Compatibility.Scale("player")
 	local us = Compatibility.Scale(unit)
-	return _G.Compatibility(string.format(
+	return runCommand(
 		"Compatibility_LOS %f %f %f %f %f %f %f %f",
-		px, py, pz, ux, uy, uz, ps, us))
+		px, py, pz, ux, uy, uz, ps, us)
 end
 
 ns.Compatibility = Compatibility

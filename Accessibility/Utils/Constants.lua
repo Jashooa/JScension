@@ -13,6 +13,8 @@ ns.Constants = {
 	-- current cast's end is queued by the client, so the next cast starts
 	-- with no dead time.
 	DEFAULT_QUEUE_WINDOW = 0.4,
+	-- Default interval that spaces repeated no-cooldown instant casts.
+	DEFAULT_ANTI_SPAM_WINDOW = 1.0,
 	-- The valid unit tokens, in editor display order. An ordered array, not
 	-- a map: the dropdown builder derives the AceGUI map from it, and the
 	-- first element ("player") is the default when a new condition is added.

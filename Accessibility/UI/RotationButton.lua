@@ -143,12 +143,8 @@ function RotationButton.Create(saved)
 	end)
 	frame:SetScript("OnDragStop", function(self)
 		self:StopMovingOrSizing()
-		local b = Profile.current().button
-		local point, _, relPoint, x, y = self:GetPoint()
-		b.point = point
-		b.relativePoint = relPoint
-		b.x = x
-		b.y = y
+		local point, _, relativePoint, x, y = self:GetPoint()
+		Profile.setButtonPosition(Profile.current().button, point, relativePoint, x, y)
 	end)
 
 	-- refresh the ready strip and the auto toggle a few times a second

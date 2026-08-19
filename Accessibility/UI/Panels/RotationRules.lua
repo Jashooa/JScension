@@ -24,10 +24,9 @@ local Profile = ns.Profile
 local Conditions = ns.Conditions
 local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
-local ContentInset = ns.ContentInset
-local Config = ns.Config
 local Fields = ns.Fields
-assert(Profile and Conditions and SpellPicker and SpellTooltip and ContentInset and Config and Fields,
+local OptionPanel = ns.OptionPanel
+assert(Profile and Conditions and SpellPicker and SpellTooltip and Fields and OptionPanel,
 	"load order: UI/Panels/RotationRules before its dependencies")
 local Type, Version = "RotationRules", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -103,68 +102,56 @@ local function conditionTypeValues()
 end
 
 -- conditionField renders one registry-declared field as the right AceGUI widget.
-local function conditionField(condition, field, fieldType, onChange)
-	local name = field:gsub("_", " ")
+local function conditionField(condition, fieldKey, fieldType, onChange)
+	local name = Conditions.FieldLabel(fieldKey)
 	local function commit(value)
-		condition[field] = value
+		Profile.setConditionField(condition, fieldKey, value)
 		if onChange then onChange() end
 	end
 	if fieldType == "percent" then
 		-- slider always has a value; init nil to 0 (slider cannot be empty)
-		if condition[field] == nil then condition[field] = 0 end
-		return Fields.Slider(name, 0, 100, 1, condition[field], commit)
+		if condition[fieldKey] == nil then Profile.setConditionField(condition, fieldKey, 0) end
+		return Fields.Slider(name, 0, 100, 1, condition[fieldKey], commit)
 	elseif fieldType == "op" then
-		return Fields.Dropdown(name, Conditions.Ops, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.Ops, condition[fieldKey], commit)
 	elseif fieldType == "unit" then
-		return Fields.Dropdown(name, Conditions.Units, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.Units, condition[fieldKey], commit)
 	elseif fieldType == "kind" then
-		return Fields.Dropdown(name, Conditions.Kinds, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.Kinds, condition[fieldKey], commit)
 	elseif fieldType == "target_type" then
-		return Fields.Dropdown(name, Conditions.TargetTypes, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.TargetTypes, condition[fieldKey], commit)
 	elseif fieldType == "classification" then
-		return Fields.Dropdown(name, Conditions.Classifications, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.Classifications, condition[fieldKey], commit)
 	elseif fieldType == "modifier" then
-		return Fields.Dropdown(name, Conditions.Modifiers, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.Modifiers, condition[fieldKey], commit)
 	elseif fieldType == "power" then
-		return Fields.Dropdown(name, Conditions.Powers, condition[field], commit)
+		return Fields.Dropdown(name, Conditions.Powers, condition[fieldKey], commit)
 	elseif fieldType == "number" then
-		return Fields.Text(name, condition[field] and tostring(condition[field]) or "", function(value)
-			condition[field] = tonumber(value)
+		return Fields.Text(name, condition[fieldKey] and tostring(condition[fieldKey]) or "", function(value)
+			Profile.setConditionField(condition, fieldKey, value)
 			if onChange then onChange() end
 		end)
 	elseif fieldType == "bool" then
 		-- checkbox always has a value; init nil to false
-		if condition[field] == nil then condition[field] = false end
-		return Fields.CheckBox(name, condition[field], commit)
+		if condition[fieldKey] == nil then Profile.setConditionField(condition, fieldKey, false) end
+		return Fields.CheckBox(name, condition[fieldKey], commit)
 	elseif fieldType == "code" then
-		return Fields.Multiline(name, condition[field], function(value)
-			condition[field] = value
+		return Fields.Multiline(name, condition[fieldKey], function(value)
+			Profile.setConditionField(condition, fieldKey, value)
 			if onChange then onChange() end
 		end)
 	else
 		-- "spell", "string", and anything unknown render as a single-line box
-		return Fields.Text(name, condition[field], function(value)
-			condition[field] = value
+		return Fields.Text(name, condition[fieldKey], function(value)
+			Profile.setConditionField(condition, fieldKey, value)
 			if onChange then onChange() end
 		end)
 	end
 end
 
--- isConditionComplete returns true when every declared field on the
--- condition has a value (non-nil and non-empty-string). Fields listed in
--- the registry entry's optional table are allowed to be nil (e.g. power
--- on power conditions means "current pool"; mine on aura conditions is
--- false by init, so only nil before the editor opens).
+-- The registry owns required and optional condition-field semantics.
 local function isConditionComplete(condition)
-	local def = Conditions.Registry[Conditions.ResolveType(condition.type)]
-	if not def then return false end
-	for field in pairs(def.fields) do
-		if not (def.optional and def.optional[field]) then
-			local v = condition[field]
-			if v == nil or v == "" then return false end
-		end
-	end
-	return true
+	return Conditions.IsComplete(condition)
 end
 
 -- setCardColor applies the standard title color: red = incomplete, orange =
@@ -184,7 +171,6 @@ end
 -- type is full width, fields keep their default single width.
 local function buildConditionSettings(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
-	local def = Conditions.Registry[condition.type]
 
 	-- updateCardState refreshes the title text and color. Red = incomplete,
 	-- orange = disabled, green = enabled and valid. Red overrides orange.
@@ -197,10 +183,9 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	enabled:SetLabel("Enabled")
 	enabled:SetValue(condition.enabled ~= false)
 	enabled:SetCallback("OnValueChanged", function(_, _, value)
-		condition.enabled = value
+		Profile.setConditionEnabled(condition, value)
 		updateCardState()
 	end)
-	container:AddChild(enabled)
 
 	local typeDropdown = AceGUI:Create("Dropdown")
 	typeDropdown:SetLabel("Condition")
@@ -208,20 +193,16 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	typeDropdown:SetList(conditionTypeValues())
 	typeDropdown:SetValue(condition.type)
 	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
-		condition.type = value
-		local clean = Conditions.Sanitize(condition)
-		if clean then
-			for k in pairs(condition) do condition[k] = nil end
-			for k, v in pairs(clean) do condition[k] = v end
-		end
+		Profile.setConditionType(condition, value)
 		updateCardState()
-		panel:NotifyPanelChanged()
+		OptionPanel.Refresh(panel)
 	end)
-	container:AddChild(typeDropdown)
 
-	if def then
-		for field, fieldType in pairs(def.fields) do
-			container:AddChild(conditionField(condition, field, fieldType, updateCardState))
+	local fields = Conditions.Fields(condition.type)
+	if fields then
+		for i = 1, #fields do
+			local field = fields[i]
+			container:AddChild(conditionField(condition, field.key, field.type, updateCardState))
 		end
 		updateCardState()
 	end
@@ -240,12 +221,12 @@ local function conditionCard(panel, rule, condIndex, container)
 	card:SetTitleButtons({
 		{ label = conditionExpanded[condition] and "−" or "+", func = function()
 			conditionExpanded[condition] = not conditionExpanded[condition]
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end },
 		{ label = "Delete", func = function()
 			Profile.deleteCondition(rule, condIndex)
 			conditionExpanded[condition] = nil
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end },
 	})
 	container:AddChild(card)
@@ -287,20 +268,20 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	card:SetTitleButtons({
 		{ label = ruleExpanded[rule] and "−" or "+", func = function()
 			ruleExpanded[rule] = not ruleExpanded[rule]
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end },
 		{ label = "▲", disabled = ruleIndex <= 1, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex - 1)
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end },
 		{ label = "▼", disabled = ruleIndex >= #rules, func = function()
 			Profile.moveRule(rotation, ruleIndex, ruleIndex + 1)
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end },
 		{ label = "Delete", func = function()
 			Profile.deleteRule(rotation, ruleIndex)
 			ruleExpanded[rule] = nil
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end },
 	})
 	SpellTooltip.Attach(card.titlebar, function() return rule end)
@@ -313,27 +294,27 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		enabled:SetLabel("Enabled")
 		enabled:SetValue(rule.enabled ~= false)
 		enabled:SetCallback("OnValueChanged", function(_, _, value)
-			rule.enabled = value
+			Profile.setRuleEnabled(rule, value)
 			updateCardState()
 		end)
 		card:AddChild(enabled)
 
 		local labelInput = Fields.Text("Label", rule.name, function(value)
-			rule.name = value
+			Profile.setRuleName(rule, value)
 			card:SetTitle(ruleTitle(rule, ruleIndex))
 		end)
 		labelInput:SetFullWidth(true)
 		card:AddChild(labelInput)
 		local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
-			rule.spell = value
+			Profile.setRuleSpell(rule, value)
 			updateCardState()
-			panel:NotifyPanelChanged()
+			OptionPanel.Refresh(panel)
 		end)
 		spellDropdown:SetFullWidth(true)
 		card:AddChild(spellDropdown)
 
 		local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
-			rule.unit = value
+			Profile.setRuleUnit(rule, value)
 			updateCardState()
 		end)
 		card:AddChild(unitDropdown)
@@ -346,7 +327,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			{ label = "Add condition", func = function()
 				Profile.addCondition(rule)
 				conditionExpanded[rule.conditions[#rule.conditions]] = true
-				panel:NotifyPanelChanged()
+				OptionPanel.Refresh(panel)
 			end },
 		})
 		card:AddChild(conditionsGroup)
@@ -363,150 +344,43 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 end
 
 -- ---------------------------------------------------------------------------
--- the panel widget
+-- panel content
 -- ---------------------------------------------------------------------------
 
-local methods = {
-	-- OnAcquire resets to a hidden, empty state. The actual render happens on
-	-- the first OnShow, after AceConfig has stored the option path in the
-	-- widget's userdata.
-	["OnAcquire"] = function(self)
-		self:SetWidth(600)
-		self:SetHeight(200)
-		self.titletext:SetText("")
-		self.rendered = false
-		self.rebuildPending = nil
-		self.frame:SetScript("OnUpdate", nil)
-	end,
+local function build(panel)
+	local rotation = OptionPanel.RotationFromPath(panel)
+	if not rotation then return end
 
-	-- SetText is called by AceConfig's execute-control setup; the panel has
-	-- no button text, so it is a no-op.
-	["SetText"] = function() end,
+	-- Rules section: its title bar carries the "Add rule" button
+	local rulesSection = AceGUI:Create("TitleButtonGroup")
+	rulesSection:SetTitle("Rules")
+	rulesSection:SetFullWidth(true)
+	rulesSection:SetLayout("Flow")
+	rulesSection:SetTitleButtons({
+		{ label = "Add rule", func = function()
+			Profile.addRule(rotation)
+			ruleExpanded[rotation.rules[#rotation.rules]] = true
+			panel._scrollToBottom = true
+			OptionPanel.Refresh(panel)
+		end },
+	})
+	panel:AddChild(rulesSection)
 
-	["OnWidthSet"] = ContentInset.OnWidthSet,
-	["OnHeightSet"] = ContentInset.OnHeightSet,
-
-	["LayoutFinished"] = function(self, width, height)
-		self:SetHeight((height or 0) + 40)
-	end,
-
-	-- NotifyPanelChanged is called by every mutation closure. It must NOT
-	-- rebuild synchronously: the closure runs inside a widget callback, and
-	-- releasing children there would pool the very button being clicked.
-	-- The rebuild is deferred one frame via a one-shot OnUpdate, so the
-	-- click finishes before anything is released. The panel and its parent
-	-- ScrollFrame survive (unlike a full dialog refresh), so the scroll
-	-- position is preserved instead of jumping.
-	["NotifyPanelChanged"] = function(self)
-		if self.rebuildPending then return end
-		self.rebuildPending = true
-		self.frame:SetScript("OnUpdate", function()
-			self.frame:SetScript("OnUpdate", nil)
-			self.rebuildPending = nil
-			self:RenderPanel()
-		end)
-	end,
-
-	["RenderPanel"] = function(self)
-		local rotation = self:PanelRotation()
-		if not rotation then return end
-		self:ReleaseChildren()
-
-		-- Rules section: its title bar carries the "Add rule" button
-		local rulesSection = AceGUI:Create("TitleButtonGroup")
-		rulesSection:SetTitle("Rules")
-		rulesSection:SetFullWidth(true)
-		rulesSection:SetLayout("Flow")
-		rulesSection:SetTitleButtons({
-			{ label = "Add rule", func = function()
-				Profile.addRule(rotation)
-				ruleExpanded[rotation.rules[#rotation.rules]] = true
-				self._scrollToBottom = true
-				self:NotifyPanelChanged()
-			end },
-		})
-		self:AddChild(rulesSection)
-
-		if #rotation.rules == 0 then
-			local emptyLabel = AceGUI:Create("Label")
-			emptyLabel:SetText("No rules. Add one above.")
-			rulesSection:AddChild(emptyLabel)
-		else
-			for i = 1, #rotation.rules do
-				ruleCard(self, rotation, i, rulesSection)
-			end
+	if #rotation.rules == 0 then
+		local emptyLabel = AceGUI:Create("Label")
+		emptyLabel:SetText("No rules. Add one above.")
+		rulesSection:AddChild(emptyLabel)
+	else
+		for i = 1, #rotation.rules do
+			ruleCard(panel, rotation, i, rulesSection)
 		end
-		self:DoLayout()
-		-- the panel's height changed; re-run the parent's layout (the
-		-- ScrollFrame that hosts this panel) so its content height and
-		-- scrollbar range track the new content length
-		local parent = self.parent
-		if parent and parent.DoLayout then
-			parent:DoLayout()
-		end
-		-- scroll to bottom after adding a new rule (flag set in the
-		-- button callback, consumed here after layout completes)
-		if self._scrollToBottom then
-			self._scrollToBottom = nil
-			if parent and parent.SetScroll then
-				parent:SetScroll(1000)
-			end
-		end
-	end,
-
-	-- PanelRotation resolves this panel's rotation from the option path
-	-- AceConfig stored in the widget userdata: the path is the arg-key chain
-	-- from the root (e.g. {"rotations", "rotation1", "rotationPanel"}), and
-	-- the rotation<N> element indexes into the live rotation list.
-	["PanelRotation"] = function(self)
-		local user = self:GetUserDataTable()
-		local path = user.path
-		if type(path) ~= "table" then return nil end
-		for i = 1, #path do
-			local index = Config.rotationIndexFromKey(path[i])
-			if index then
-				return Profile.rotations()[index]
-			end
-		end
-		return nil
-	end,
-}
-
--- ---------------------------------------------------------------------------
--- constructor
--- ---------------------------------------------------------------------------
-
--- The panel is a bare container: it holds the Rules section, which provides
--- the visible bordered box. No backdrop, border, or title of its own.
-local function Constructor()
-	local frame = CreateFrame("Frame", nil, UIParent)
-	frame:SetFrameStrata("FULLSCREEN_DIALOG")
-
-	local content = CreateFrame("Frame", nil, frame)
-	content:SetPoint("TOPLEFT", 0, 0)
-	content:SetPoint("BOTTOMRIGHT", 0, 0)
-
-	local widget = {
-		frame = frame,
-		content = content,
-		titletext = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal"),
-		type = Type,
-	}
-	for method, func in pairs(methods) do
-		widget[method] = func
 	end
-
-	widget = AceGUI:RegisterAsContainer(widget)
-
-	-- render once the widget is shown (after InjectInfo stored the option)
-	frame:SetScript("OnShow", function()
-		if not widget.rendered then
-			widget.rendered = true
-			widget:RenderPanel()
-		end
-	end)
-
-	return widget
 end
 
-AceGUI:RegisterWidgetType(Type, Constructor, Version)
+OptionPanel.Register({
+	type = Type,
+	version = Version,
+	initialHeight = 200,
+	layoutHeightOffset = 40,
+	build = build,
+})

@@ -9,22 +9,17 @@
 local _, ns = ...
 
 local Constants = ns.Constants
-assert(Constants, "load order: Game/Cast before Constants")
--- Profile is not captured: Core/Profile.lua loads after Game/, so it is
--- looked up at call time via ns.Profile.
+local CastState = ns.CastState
+assert(Constants and CastState, "load order: Game/Cast before Constants/CastState")
 
 local Cast = {}
 
 -- currentCast returns the player's active cast or channel as (name, endMs),
--- or nil when idle. It is the single owner of the UnitCastingInfo/
--- UnitChannelInfo return positions (name = 1st, endTime = 6th).
+-- or nil when idle.
 function Cast.currentCast()
-	local name, _, _, _, _, endMs = UnitCastingInfo("player")
-	if not name then
-		name, _, _, _, _, endMs = UnitChannelInfo("player")
-	end
-	if not name then return nil end
-	return name, endMs
+	local state = CastState.Read("player")
+	if not state then return nil end
+	return state.name, state.endTimeMilliseconds
 end
 
 -- isCasting returns true while the player is casting or channelling.

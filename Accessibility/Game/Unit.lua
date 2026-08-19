@@ -6,6 +6,8 @@
 local _, ns = ...
 
 local Unit = {}
+local CastState = ns.CastState
+assert(CastState, "load order: Game/Unit before CastState")
 
 -- isAlive returns true when the unit exists and is not dead or a ghost.
 function Unit.isAlive(unit)
@@ -21,6 +23,10 @@ end
 function Unit.exists(unit)
 	return UnitExists(unit) and true or false
 end
+-- guid returns the raw unit GUID for the shim boundary.
+function Unit.guid(unit)
+	return UnitGUID(unit)
+end
 
 -- canAttack returns true when the unit is attackable by the player.
 function Unit.canAttack(unit)
@@ -29,27 +35,24 @@ end
 
 -- isCasting returns true when the unit is casting or channeling.
 function Unit.isCasting(unit)
-	return (UnitCastingInfo(unit) or UnitChannelInfo(unit)) and true or false
+	return CastState.Read(unit) ~= nil
 end
 
 -- isCastingSpell returns true when the unit is casting or channeling the
 -- named spell. Cast-bar names carry a rank suffix in this client, so both
 -- sides are normalized before comparison.
 function Unit.isCastingSpell(unit, spell)
-	local name = UnitCastingInfo(unit) or UnitChannelInfo(unit)
-	if not name then return false end
+	local state = CastState.Read(unit)
+	if not state then return false end
 	local want = spell and ns.Spell and ns.Spell.stripRank(spell) or spell
-	return ns.Spell.stripRank(name) == want
+	return ns.Spell.stripRank(state.name) == want
 end
 
 -- castInterruptible returns true when the unit's current cast or channel can
 -- be interrupted. A unit with no cast is not interruptible.
 function Unit.castInterruptible(unit)
-	local _, _, _, _, _, _, _, _, notInterruptible = UnitCastingInfo(unit)
-	if notInterruptible ~= nil then return not notInterruptible end
-	local _, _, _, _, _, _, _, notInterruptibleChannel = UnitChannelInfo(unit)
-	if notInterruptibleChannel ~= nil then return not notInterruptibleChannel end
-	return false
+	local state = CastState.Read(unit)
+	return state and state.interruptible or false
 end
 
 -- speed returns the unit's movement speed.

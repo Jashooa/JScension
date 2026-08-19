@@ -18,15 +18,31 @@ local Profile = {}
 -- and the un-sanitized fallback all use it.
 local DEFAULT_ROTATION_NAME = "Default"
 
+function Profile.newRotation(name)
+	return { name = name, rules = {} }
+end
+
+function Profile.newRule()
+	return { name = "", spell = "", enabled = true, conditions = {} }
+end
+
+function Profile.newCondition()
+	return { type = "unit_target_type", enabled = true }
+end
+
+-- ---------------------------------------------------------------------------
+-- defaults
+-- ---------------------------------------------------------------------------
 Profile.defaults = {
 	profile = {
 		auto = false,
 		pulseInterval = 0.1,
 		gcdProbeSpell = "",
 		queueWindow = 0.4,   -- seconds; 0 disables early-queueing
+		antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW,
 		active = DEFAULT_ROTATION_NAME,
 		rotations = {
-			{ name = DEFAULT_ROTATION_NAME, rules = {} },
+			Profile.newRotation(DEFAULT_ROTATION_NAME),
 		},
 		button = {
 			enabled = true,   -- false hides the cast button
@@ -49,6 +65,9 @@ local asBool = ns.Coerce.asBool
 local asString = ns.Coerce.asString
 local asNumber = ns.Coerce.asNumber
 local Constants = ns.Constants
+local function clamp(value, minimum, maximum)
+	return math.max(minimum, math.min(maximum, value))
+end
 assert(asBool and asString and asNumber and Constants, "load order: Core/Profile before Coerce/Constants")
 
 -- ---------------------------------------------------------------------------
@@ -89,12 +108,12 @@ end
 -- sanitizeRotation repairs one rotation. It always returns a valid rotation.
 local function sanitizeRotation(rotation)
 	if type(rotation) ~= "table" then
-		return { name = "Rotation", rules = {} }
+		return Profile.newRotation("Rotation")
 	end
 	local name = asString(rotation.name, "")
 	if name == "" then name = "Rotation" end
 
-	local clean = { name = name, rules = {} }
+	local clean = Profile.newRotation(name)
 	local rules = type(rotation.rules) == "table" and rotation.rules or {}
 	for i = 1, #rules do
 		local r = sanitizeRule(rules[i])
@@ -119,6 +138,8 @@ function Profile.sanitizeProfile(p)
 	p.gcdProbeSpell = asString(p.gcdProbeSpell, "")
 	-- queue window: 0 (off) .. 1.0s, matching the client CVar's practical range
 	p.queueWindow = math.max(0, math.min(1.0, asNumber(p.queueWindow, 0.4)))
+	-- anti-spam window: 0 (off) .. 2.0s for no-cooldown instant spells
+	p.antiSpamWindow = clamp(asNumber(p.antiSpamWindow, Constants.DEFAULT_ANTI_SPAM_WINDOW), 0, 2.0)
 	-- migrate the old flat rules array into one "Default" rotation
 	local srcRotations = p.rotations
 	if type(srcRotations) ~= "table" then
@@ -143,7 +164,7 @@ function Profile.sanitizeProfile(p)
 		clean[#clean + 1] = rotation
 	end
 	if #clean == 0 then
-		clean[1] = { name = DEFAULT_ROTATION_NAME, rules = {} }
+		clean[1] = Profile.newRotation(DEFAULT_ROTATION_NAME)
 	end
 	p.rotations = clean
 
@@ -251,13 +272,13 @@ local function copyRule(rule)
 end
 
 function Profile.addRotation(name)
-	local rotation = { name = uniqueName(name or "Rotation"), rules = {} }
+	local rotation = Profile.newRotation(uniqueName(name or "Rotation"))
 	Profile.rotations()[#Profile.rotations() + 1] = rotation
 	return rotation
 end
 
 function Profile.duplicateRotation(rotation)
-	local copy = { name = uniqueName(rotation.name .. " copy"), rules = {} }
+	local copy = Profile.newRotation(uniqueName(rotation.name .. " copy"))
 	for i = 1, #rotation.rules do
 		copy.rules[i] = copyRule(rotation.rules[i])
 	end
@@ -322,12 +343,7 @@ end
 -- ---------------------------------------------------------------------------
 
 function Profile.addRule(rotation)
-	rotation.rules[#rotation.rules + 1] = {
-		name = "",
-		spell = "",
-		enabled = true,
-		conditions = {},
-	}
+	rotation.rules[#rotation.rules + 1] = Profile.newRule()
 end
 
 function Profile.deleteRule(rotation, index)
@@ -335,9 +351,8 @@ function Profile.deleteRule(rotation, index)
 	table.remove(rotation.rules, index)
 end
 
--- addCondition appends a default condition to a rule.
 function Profile.addCondition(rule)
-	rule.conditions[#rule.conditions + 1] = { type = "unit_target_type", enabled = true }
+	rule.conditions[#rule.conditions + 1] = Profile.newCondition()
 end
 
 -- deleteCondition removes a condition from a rule.
@@ -355,5 +370,102 @@ function Profile.moveRule(rotation, from, to)
 	local rule = table.remove(rules, from)
 	table.insert(rules, to, rule)
 end
+-- ---------------------------------------------------------------------------
+-- persisted field mutation
+-- ---------------------------------------------------------------------------
+
+
+function Profile.setRuleEnabled(rule, enabled)
+	rule.enabled = asBool(enabled, true)
+end
+
+function Profile.setRuleName(rule, name)
+	rule.name = asString(name, "")
+end
+
+function Profile.setRuleSpell(rule, spell)
+	rule.spell = asString(spell, "")
+end
+
+function Profile.setRuleUnit(rule, unit)
+	rule.unit = asString(unit)
+end
+
+function Profile.setConditionEnabled(condition, enabled)
+	condition.enabled = asBool(enabled, true)
+end
+
+function Profile.setConditionType(condition, conditionType)
+	if type(condition) ~= "table" or not ns.Conditions then return false end
+	local enabled = asBool(condition.enabled, true)
+	condition.type = asString(conditionType, condition.type)
+	local clean = ns.Conditions.Sanitize(condition)
+	if not clean then return false end
+	clean.enabled = enabled
+	for key in pairs(condition) do condition[key] = nil end
+	for key, value in pairs(clean) do condition[key] = value end
+	return true
+end
+
+function Profile.setConditionField(condition, fieldKey, value)
+	if type(condition) ~= "table" or not ns.Conditions then return false end
+	local fields = ns.Conditions.Fields(condition.type)
+	if not fields then return false end
+	for i = 1, #fields do
+		local field = fields[i]
+		if field.key == fieldKey then
+			local fieldValue
+			if field.type == "percent" or field.type == "power" or field.type == "number" then
+				fieldValue = asNumber(value)
+			elseif field.type == "bool" then
+				fieldValue = asBool(value, false)
+			else
+				fieldValue = asString(value)
+			end
+			condition[fieldKey] = fieldValue
+			return true
+		end
+	end
+	return false
+end
+
+function Profile.setButtonEnabled(button, enabled)
+	button.enabled = asBool(enabled, true)
+end
+
+function Profile.setButtonLocked(button, locked)
+	button.locked = asBool(locked, false)
+end
+
+function Profile.setButtonPosition(button, point, relativePoint, x, y)
+	button.point = asString(point, "CENTER")
+	button.relativePoint = asString(relativePoint, "CENTER")
+	button.x = asNumber(x, 0)
+	button.y = asNumber(y, 0)
+end
+
+function Profile.setButtonScale(button, scale)
+	button.scale = clamp(asNumber(scale, 1.0), 0.5, 2.0)
+end
+
+function Profile.setAutoEnabled(enabled)
+	Profile.current().auto = asBool(enabled, false)
+end
+
+function Profile.setGcdProbeSpell(spell)
+	Profile.current().gcdProbeSpell = asString(spell, "")
+end
+
+function Profile.setPulseInterval(seconds)
+	Profile.current().pulseInterval = math.max(0.05, asNumber(seconds, 0.1))
+end
+
+function Profile.setAntiSpamWindow(seconds)
+	Profile.current().antiSpamWindow = clamp(asNumber(seconds, Constants.DEFAULT_ANTI_SPAM_WINDOW), 0, 2.0)
+end
+function Profile.setQueueWindow(seconds)
+	Profile.current().queueWindow = clamp(asNumber(seconds, Constants.DEFAULT_QUEUE_WINDOW), 0, 1.0)
+end
+
 
 ns.Profile = Profile
