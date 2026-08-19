@@ -216,10 +216,21 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	register("unit_exists", {
-		label = "Unit exists and is alive",
+		label = "Unit exists",
 		fields = { { key = "unit", type = "unit" } },
 		describe = function(condition)
 			return ("%s exists"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Unit.exists(condition.unit)
+		end,
+	})
+
+	register("unit_alive", {
+		label = "Unit is alive",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is alive"):format(condition.unit or "?")
 		end,
 		eval = function(condition)
 			return Unit.isAlive(condition.unit)

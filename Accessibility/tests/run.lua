@@ -497,7 +497,7 @@ do
 		"unit_target_type", "unit_health_percent", "unit_health",
 		"unit_power_percent", "unit_power", "unit_aura_present",
 		"unit_aura_missing", "unit_aura_stacks", "spell_ready", "spell_usable",
-		"spell_cooldown_remaining", "unit_exists", "unit_hostile", "unit_casting",
+		"spell_cooldown_remaining", "unit_exists", "unit_alive", "unit_hostile", "unit_casting",
 		"unit_moving", "unit_standing_still", "unit_in_combat", "unit_range",
 		"player_combo_points", "player_shapeshift_form", "unit_casting_spell",
 		"unit_cast_interruptible", "unit_level", "unit_is_player",
@@ -518,6 +518,11 @@ do
 	setUnit("target", { exists = true, dead = false, hostile = true })
 	ok("unit_target_type enemy passes on hostile", Conditions.Eval({ type = "unit_target_type", value = "enemy", unit = "target" }) == true)
 	ok("unit_target_type friendly fails on hostile", Conditions.Eval({ type = "unit_target_type", value = "friendly", unit = "target" }) == false)
+	setUnit("target", { exists = true, dead = true, hostile = true })
+	ok("unit_exists passes for dead unit", Conditions.Eval({ type = "unit_exists", unit = "target" }) == true)
+	ok("unit_alive fails for dead unit", Conditions.Eval({ type = "unit_alive", unit = "target" }) == false)
+	setUnit("target", { exists = true, dead = false, hostile = true })
+	ok("unit_alive passes for living unit", Conditions.Eval({ type = "unit_alive", unit = "target" }) == true)
 
 	-- health_percent
 	setUnit("target", { exists = true, dead = false, health = 30, maxHealth = 100, hostile = true })
