@@ -93,27 +93,14 @@ end
 -- secure-function wrappers
 -- ---------------------------------------------------------------------------
 
--- CastGround places a pending ground-target spell at a unit's on-screen
--- position. Each protected call runs through Compatibility.Call separately.
+-- CastGround places a pending ground-target spell at a unit's world
+-- position via HandleTerrainClick (0x0080c340). TerrainClickInfo struct:
+-- {target_guid_lo, target_guid_hi, x, y, z}. Flag 0x40 in DAT_00d3f4e0
+-- means ground-targeted spell.
 function Compatibility.CastGround(spell, unit)
-	local w, h = GetScreenWidth(), GetScreenHeight()
-	local aspect = w / h
-	local d = math.sqrt(w * w + h * h)
-
-	-- save cursor (base UI space → per-axis fraction)
-	local scx, scy = GetCursorPosition()
-	local savedX = scx / (768 * aspect)
-	local savedY = scy / 768
-
-	-- target screen position (diagonal-normalised → per-axis fraction)
-	local tx, ty = GetScreenPosition(unit)
-	local gx = tx * d / w
-	local gy = ty * d / h
-
-	SetCursorPosition(gx, gy)
-	Compatibility.Call("CameraOrSelectOrMoveStart()")
-	Compatibility.Call("CameraOrSelectOrMoveStop()")
-	SetCursorPosition(savedX, savedY)
+	local x, y, z = Compatibility.Position(unit)
+	if not x then return end
+	_G.Compatibility(string.format("Compatibility_PlaceGround %.1f %.1f %.1f", x, y, z))
 end
 
 -- Cast runs CastSpellByName under the trusted owner. unit is the target

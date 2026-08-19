@@ -101,6 +101,13 @@
 #define LUA_PUSHNUMBER   0x0084e2a0   /* lua_pushnumber(state, double): pushes a number */
 #define OBJMGR_LOOKUP    0x004d4db0   /* ClntObjMgrGetObjectPtr(guid_lo, guid_hi, typeMask) -> obj* (CONFIRMED) */
 #define LOS_TRACE        0x007a3b70   /* FUN_007a3b70(start, end, hit, dist, flags, 0). dist=input+output, init 1.0. flags=0x1020124. */
+#define CTM_FUNC         0x00727400   /* CGPlayer_C__ClickToMove(this, action, &guid, &pos, precision). HOOKED by Extensions — call through hook. */
+#define CTM_BASE         0x00ca11d8   /* ClickToMove struct base */
+#define GET_PLAYER_OBJ   0x004038f0   /* GetActivePlayerObject() -> obj* */
+#define HANDLE_TERRAIN_CLICK 0x0080c340   /* Spell_C__HandleTerrainClick(TerrainClickInfo*) -> nonzero on success */
+#define PENDING_SPELL_FLAGS  0x00d3f4e0   /* pending spell targeting-type flags; 0x40 = ground target */
+#define PENDING_SPELL        0x00d3f4e4   /* pending Spell_C*; 0 when no spell awaits targeting */
+
 /* The ExtendedAnticheatMgr singleton address is NOT hardcoded here: Ascension
  * rebuilds Extensions.dll and its .data layout shifts (the 2026-08-13 build
  * moved the singleton ~12KB). find_ac_singleton() below locates it by SHAPE at
@@ -138,7 +145,11 @@ static const unsigned char EXP_LUA_RAWGETI[16]     = {0x55,0x8b,0xec,0x8b,0x45,0
 static const unsigned char EXP_LUA_PUSHNUMBER[16]  = {0x55,0x8b,0xec,0x8b,0x4d,0x08,0xdd,0x45,0x0c,0x8b,0x41,0x0c,0x8b,0x15,0x9c,0x13};
 static const unsigned char EXP_OBJMGR_LOOKUP[16]   = {0x55,0x8b,0xec,0x64,0x8b,0x0d,0x2c,0x00,0x00,0x00,0xa1,0xbc,0x39,0xd4,0x00,0x8b};
 static const unsigned char EXP_LOS_TRACE[16]       = {0x55,0x8b,0xec,0x83,0xec,0x18,0x8b,0x45,0x18,0x83,0x05,0xc4,0x04,0xce,0x00,0x01};
+static const unsigned char EXP_CTM_FUNC[16]        = {0xe9,0x3b,0x2f,0xff,0x78,0xcc,0x53,0x8b,0xd9,0x8b,0x43,0x08,0x8b,0x08,0x3b,0x0d};
+static const unsigned char EXP_GET_PLAYER_OBJ[16]  = {0xe8,0x9b,0xfe,0x0c,0x00,0x68,0xa0,0x00,0x00,0x00,0x68,0x18,0x1f,0x9e,0x00,0x6a};
 static const unsigned char EXP_SECURE_EXEC[16]     = {0x55,0x8b,0xec,0x51,0x83,0x05,0xa0,0x13,0xd4,0x00,0x01,0xa1,0x9c,0x13,0xd4,0x00};
+static const unsigned char EXP_HANDLE_TERRAIN_CLICK[16] = {0x55,0x8b,0xec,0xa1,0xe4,0xf4,0xd3,0x00,0x85,0xc0,0x75,0x04,0x32,0xc0,0x5d,0xc3};
+
 
 typedef void  (__cdecl *Register_t)(const char*, void*);
 typedef const char* (__cdecl *ReadStr_t)(unsigned int, int, unsigned int*);
@@ -235,6 +246,7 @@ static void __attribute__((noreturn)) fatal_exit(const char* msg) {
     logmsg(msg);
     FreeLibraryAndExitThread(g_hModule, 1);
 }
+
 
 
 /* ---------- runtime AC singleton resolution ---------- */
@@ -340,6 +352,10 @@ static int validate_layout(void) {
         { LUA_PUSHNUMBER,  EXP_LUA_PUSHNUMBER,  "LUA_PUSHNUMBER" },
         { OBJMGR_LOOKUP,   EXP_OBJMGR_LOOKUP,   "OBJMGR_LOOKUP" },
         { LOS_TRACE,       EXP_LOS_TRACE,       "LOS_TRACE" },
+        { CTM_FUNC,        EXP_CTM_FUNC,        "CTM_FUNC" },
+        { GET_PLAYER_OBJ,  EXP_GET_PLAYER_OBJ,  "GET_PLAYER_OBJ" },
+        { HANDLE_TERRAIN_CLICK, EXP_HANDLE_TERRAIN_CLICK, "HANDLE_TERRAIN_CLICK" },
+
     };
     unsigned char b[16];
     int ok = 1, i;
@@ -638,6 +654,81 @@ static int __cdecl Compatibility_body(unsigned int state) {
                 }
             }
             pushnum(state, (double)scale);
+            return 1;
+        }
+    }
+
+    /* ---- "Compatibility_CTM x y z" (direct CTM call, debug) ---- */
+    {
+        static const char CTM_PFX[] = "Compatibility_CTM ";
+        if (script && len > sizeof(CTM_PFX) - 1 && memcmp(script, CTM_PFX, sizeof(CTM_PFX) - 1) == 0) {
+            typedef void* (__cdecl *GetPlayerObj_t)(void);
+            typedef int (__thiscall *CTM_t)(void*, int, unsigned int*, float*, int);
+            typedef void (__cdecl *PushNum_t)(unsigned int, double);
+            GetPlayerObj_t get_player = (GetPlayerObj_t)GET_PLAYER_OBJ;
+            CTM_t ctm = (CTM_t)CTM_FUNC;
+            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
+            const char* p = script + sizeof(CTM_PFX) - 1;
+            const char* e = script + len;
+            float pos[3];
+            unsigned int guid[2] = {0, 0};
+            void* player;
+            int result, i;
+            for (i = 0; i < 3; i++) pos[i] = parse_float(&p, e);
+            player = get_player();
+            if (!player) { return 0; }
+            result = ctm(player, 1, guid, pos, 0);
+            logmsgf("ctm: ctm(%08lx, 1, (%f,%f,%f)) = %d",
+                    (unsigned long)player, pos[0], pos[1], pos[2], result);
+            pushnum(state, (double)(result ? 1.0 : 0.0));
+            return 1;
+        }
+    }
+
+    /* ---- "Compatibility_PlaceGround tx ty tz" (ground placement via HandleTerrainClick) ---- */
+    {
+        static const char PG_PFX[] = "Compatibility_PlaceGround ";
+        if (script && len > sizeof(PG_PFX) - 1 && memcmp(script, PG_PFX, sizeof(PG_PFX) - 1) == 0) {
+            /* HandleTerrainClick at 0x0080c340 takes a TerrainClickInfo struct:
+             *   unsigned int target_guid_lo, target_guid_hi;
+             *   float x, y, z;
+             * It writes the location into the pending spell struct, clears the
+             * targeting-type flag, and executes once no targeting flags remain. */
+            typedef int (__cdecl *HandleTerrainClick_t)(void*);
+            typedef void (__cdecl *PushNum_t)(unsigned int, double);
+            HandleTerrainClick_t handle_terrain_click = (HandleTerrainClick_t)HANDLE_TERRAIN_CLICK;
+            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
+            const char* p = script + sizeof(PG_PFX) - 1;
+            const char* e = script + len;
+            unsigned int info[5];
+            int result;
+            unsigned long pending = *(unsigned long*)PENDING_SPELL;
+            if (!pending) {
+                logmsg("placeground: no pending spell");
+                pushnum(state, 0.0);
+                return 1;
+            }
+            /* Parse x, y, z */
+            {
+                float x = parse_float(&p, e);
+                float y = parse_float(&p, e);
+                float z = parse_float(&p, e);
+                /* TerrainClickInfo for ground spells:
+                 * {target_guid_lo, target_guid_hi, x, y, z}. */
+                info[0] = 0; /* target GUID lo */
+                info[1] = 0; /* target GUID hi */
+                memcpy(&info[2], &x, sizeof(x));
+                memcpy(&info[3], &y, sizeof(y));
+                memcpy(&info[4], &z, sizeof(z));
+            }
+            {
+                float pos[3];
+                memcpy(pos, &info[2], sizeof(pos));
+                logmsgf("placeground: pos=(%.1f,%.1f,%.1f) pending=%08lx flags=%08x", pos[0], pos[1], pos[2], pending, *(unsigned int*)PENDING_SPELL_FLAGS);
+            }
+            result = handle_terrain_click(info);
+            logmsgf("placeground: HandleTerrainClick returned %d, flags now=%08x", result, *(unsigned int*)PENDING_SPELL_FLAGS);
+            pushnum(state, (double)(result ? 1.0 : 0.0));
             return 1;
         }
     }

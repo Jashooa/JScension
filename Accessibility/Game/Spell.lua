@@ -44,9 +44,22 @@ function Spell.usable(ref)
 	return IsUsableSpell(ref)
 end
 
--- inRange returns true when the spell is in range of the unit.
+-- inRange returns true when the spell is in range of the unit, false when
+-- out of range, and nil for ground-targeted spells (no unit-based range).
 function Spell.inRange(ref, unit)
-	return IsSpellInRange(ref, unit) == 1
+	local r = IsSpellInRange(ref, unit)
+	if r == nil then return nil end
+	return r == 1
+end
+
+-- maxRange returns the maximum range of a spell in yards, or 0 for melee/self spells.
+function Spell.maxRange(ref)
+	return select(9, GetSpellInfo(ref)) or 0
+end
+
+-- minRange returns the minimum range of a spell in yards, or 0 for melee/self spells.
+function Spell.minRange(ref)
+	return select(8, GetSpellInfo(ref)) or 0
 end
 
 -- verifyShape probes a known spell and returns false when the documented

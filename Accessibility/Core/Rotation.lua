@@ -55,17 +55,18 @@ local function RulePasses(rule)
 
 	-- gate 2: the target unit must exist and be alive (skip for self-cast)
 	if unit ~= "player" and not Unit.isAlive(unit) then
-		return false
+		return false, "target dead"
 	end
 
 	-- gate 3: the spell must be known
 	if not SpellPicker.IsKnown(rule.spell) then
-		return false
+		return false, "not known"
 	end
 
 	-- gate 4: the spell must be usable
 	local usable, noMana = Spell.usable(rule.spell)
-	if not usable or noMana then return false end
+	if not usable then return false, "not usable" end
+	if noMana then return false, "no mana" end
 
 	-- gate 5: the spell's own cooldown must be up. The global cooldown is
 	-- handled by the GCD gate, not here.
@@ -74,19 +75,21 @@ local function RulePasses(rule)
 		-- a real cooldown is running: clear the anti-spam marker, the cooldown
 		-- gate already spaces this spell
 		lastCastAt[rule.spell] = nil
-		if (start + duration) > GetTime() then return false end
+		if (start + duration) > GetTime() then return false, "on cooldown" end
 	end
 
-	-- gate 7: the target must be in range (skip for self-cast)
+	-- gate 7: the target must be in range (skip for self-cast and
+	-- ground-targeted spells which have no unit-based range check)
 	if unit ~= "player" then
-		if not Spell.inRange(rule.spell, unit) then return false end
+		local inRange = Spell.inRange(rule.spell, unit)
+		if inRange == false then return false, "out of range" end
 	end
 
 	-- gate 8: every condition must pass
 	local conds = rule.conditions
 	if conds then
 		for i = 1, #conds do
-			if not Conditions.Eval(conds[i]) then return false end
+			if not Conditions.Eval(conds[i]) then return false, "condition" end
 		end
 	end
 
@@ -102,7 +105,7 @@ local function RulePasses(rule)
 	local refName = Spell.stripRank(rule.spell)
 	if not (castMs and castMs > 0) and castName ~= refName then
 		local t = lastCastAt[rule.spell]
-		if t and (GetTime() - t) < ANTI_SPAM_WINDOW then return false end
+		if t and (GetTime() - t) < ANTI_SPAM_WINDOW then return false, "anti-spam" end
 	end
 
 	return true
@@ -188,7 +191,8 @@ function Rotation.Simulate()
 		elseif RulePasses(rule) then
 			state = "would cast"
 		else
-			state = "blocked"
+			local _, reason = RulePasses(rule)
+			state = "blocked: " .. (reason or "?")
 		end
 		lines[#lines + 1] = ("%d. %s: %s"):format(i, rule.spell, state)
 	end
