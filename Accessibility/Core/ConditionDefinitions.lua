@@ -20,12 +20,10 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		"condition definitions require all game dependencies")
 
 	local registry = conditions.Registry
-	local order = {}
 
 	local function register(key, definition)
 		definition.key = key
 		registry[key] = definition
-		order[#order + 1] = key
 	end
 
 	local function powerName(power)
@@ -33,8 +31,28 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		return conditions.Powers[power] or "power"
 	end
 
+	register("unit_exists", {
+		label = "Unit exists",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s exists"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Unit.exists(condition.unit)
+		end,
+	})
+	register("unit_alive", {
+		label = "Unit is alive",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is alive"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Unit.isAlive(condition.unit)
+		end,
+	})
 	register("unit_target_type", {
-		label = "Target type",
+		label = "Unit target type",
 		fields = { { key = "unit", type = "unit" }, { key = "value", type = "target_type" } },
 		describe = function(condition)
 			return ("%s is %s"):format(condition.unit or "?", condition.value or "?")
@@ -54,9 +72,112 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return false
 		end,
 	})
+	register("unit_hostile", {
+		label = "Unit is attackable",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is attackable"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			return Unit.isAlive(unit) and Unit.canAttack(unit)
+		end,
+	})
+	register("unit_is_player", {
+		label = "Unit is a player",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is a player"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			return Unit.exists(unit) and Unit.isPlayer(unit)
+		end,
+	})
+	register("unit_classification", {
+		label = "Unit classification",
+		fields = { { key = "unit", type = "unit" }, { key = "value", type = "classification" } },
+		describe = function(condition)
+			return ("%s is %s"):format(condition.unit or "?", condition.value or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not Unit.exists(unit) then return false end
+			return Unit.classification(unit) == (condition.value)
+		end,
+	})
+	register("unit_level", {
+		label = "Unit level comparison",
+		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
+		describe = function(condition)
+			return ("%s level %s %s"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not Unit.exists(unit) then return false end
+			return Compare.compare(Unit.level(unit), condition.op, tonumber(condition.value))
+		end,
+	})
+	register("unit_in_combat", {
+		label = "Unit is in combat",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is in combat"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Unit.inCombat(condition.unit)
+		end,
+	})
+	register("unit_moving", {
+		label = "Unit is moving",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is moving"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local speed = Unit.speed(condition.unit)
+			return speed and speed > 0
+		end,
+	})
+	register("unit_standing_still", {
+		label = "Unit is standing still",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is standing still"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local speed = Unit.speed(condition.unit)
+			return not speed or speed == 0
+		end,
+	})
+	register("unit_is_tanking", {
+		label = "Player is tanking unit",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("you are tanking %s"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			return Unit.exists(unit) and Unit.isTanking(unit)
+		end,
+	})
+	register("unit_threat_percent", {
+		label = "Unit threat (scaled percentage)",
+		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
+		describe = function(condition)
+			return ("threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not Unit.exists(unit) then return false end
+			local pct = Unit.threatPercent(unit)
+			if not pct then return false end
+			return Compare.compare(pct, condition.op, tonumber(condition.value))
+		end,
+	})
 
 	register("unit_health_percent", {
-		label = "Health percent",
+		label = "Unit health percentage",
 		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
 		describe = function(condition)
 			return ("%s health %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
@@ -69,7 +190,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	register("unit_health", {
-		label = "Health (raw value)",
+		label = "Unit health (raw)",
 		-- raw is an unbounded number (not a 0-100 percent), rendered as a text
 		-- input so values like 30000 are reachable
 		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "number" } },
@@ -84,7 +205,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	register("unit_power_percent", {
-		label = "Power percent",
+		label = "Unit power percentage",
 		fields = { { key = "unit", type = "unit" }, { key = "power", type = "power" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
 		optional = { power = true },  -- nil = current pool
 		describe = function(condition)
@@ -99,7 +220,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	register("unit_power", {
-		label = "Power (raw value)",
+		label = "Unit power (raw)",
 		-- raw is an unbounded number (not a 0-100 percent), rendered as a text
 		-- input so values like 30000 are reachable
 		fields = { { key = "unit", type = "unit" }, { key = "power", type = "power" }, { key = "op", type = "op" }, { key = "value", type = "number" } },
@@ -152,7 +273,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	register("unit_aura_stacks", {
-		label = "Unit aura stack count",
+		label = "Unit aura stacks",
 		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
 		optional = { mine = true },
 		describe = function(condition)
@@ -165,9 +286,72 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Compare.compare(stacks, condition.op, tonumber(condition.value))
 		end,
 	})
+	register("unit_aura_remains", {
+		label = "Unit aura time remaining",
+		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
+		optional = { mine = true },
+		describe = function(condition)
+			return ("%s has %s with %s %ss left"):format(condition.unit or "?", condition.aura or "?",
+				condition.op or "?", tostring(condition.value or "?"))
+		end,
+		eval = function(condition)
+			-- nil = absent. A permanent aura reports 0 remaining; 0 is a number,
+			-- so it compares normally (0 > N fails for any positive N).
+			local remaining = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
+			if remaining == nil then return false end
+			return Compare.compare(remaining, condition.op, tonumber(condition.value))
+		end,
+	})
 
+	register("unit_casting", {
+		label = "Unit is casting",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is casting"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			return Unit.exists(unit) and Unit.isCasting(unit)
+		end,
+	})
+	register("unit_casting_spell", {
+		label = "Unit is casting a specific spell",
+		fields = { { key = "unit", type = "unit" }, { key = "spell", type = "spell" } },
+		describe = function(condition)
+			return ("%s is casting %s"):format(condition.unit or "?", condition.spell or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
+			return Unit.isCastingSpell(unit, condition.spell)
+		end,
+	})
+	register("unit_cast_interruptible", {
+		label = "Unit's cast is interruptible",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s's cast is interruptible"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			return Unit.exists(unit) and Unit.castInterruptible(unit)
+		end,
+	})
+
+	register("unit_range", {
+		label = "Unit is in spell range",
+		fields = { { key = "spell", type = "spell" }, { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s in range of %s"):format(condition.unit or "?", condition.spell or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
+			return Spell.inRange(condition.spell, unit)
+		end,
+	})
 	register("spell_ready", {
-		label = "Spell is off cooldown",
+		label = "Spell is ready",
 		fields = { { key = "spell", type = "spell" } },
 		describe = function(condition)
 			return ("%s is ready"):format(condition.spell or "?")
@@ -195,9 +379,8 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return usable and not noMana
 		end,
 	})
-
 	register("spell_cooldown_remaining", {
-		label = "Spell cooldown remaining",
+		label = "Spell cooldown remaining (seconds)",
 		fields = { { key = "spell", type = "spell" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
 		describe = function(condition)
 			return ("%s cooldown %s %ss"):format(condition.spell or "?", condition.op or "?", tostring(condition.value or "?"))
@@ -212,100 +395,6 @@ function ConditionDefinitions.Build(conditions, dependencies)
 				if remaining < 0 then remaining = 0 end
 			end
 			return Compare.compare(remaining, condition.op, tonumber(condition.value))
-		end,
-	})
-
-	register("unit_exists", {
-		label = "Unit exists",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s exists"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			return Unit.exists(condition.unit)
-		end,
-	})
-
-	register("unit_alive", {
-		label = "Unit is alive",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is alive"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			return Unit.isAlive(condition.unit)
-		end,
-	})
-
-	register("unit_hostile", {
-		label = "Unit is attackable",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is attackable"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			return Unit.isAlive(unit) and Unit.canAttack(unit)
-		end,
-	})
-
-	register("unit_casting", {
-		label = "Unit is casting",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is casting"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			return Unit.exists(unit) and Unit.isCasting(unit)
-		end,
-	})
-
-	register("unit_moving", {
-		label = "Unit is moving",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is moving"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local speed = Unit.speed(condition.unit)
-			return speed and speed > 0
-		end,
-	})
-
-	register("unit_standing_still", {
-		label = "Unit is standing still",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is standing still"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local speed = Unit.speed(condition.unit)
-			return not speed or speed == 0
-		end,
-	})
-
-	register("unit_in_combat", {
-		label = "Unit is in combat",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is in combat"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			return Unit.inCombat(condition.unit)
-		end,
-	})
-
-	register("unit_range", {
-		label = "Target is in range of a spell",
-		fields = { { key = "spell", type = "spell" }, { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s in range of %s"):format(condition.unit or "?", condition.spell or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
-			return Spell.inRange(condition.spell, unit)
 		end,
 	})
 
@@ -336,115 +425,8 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	register("unit_casting_spell", {
-		label = "Unit is casting a specific spell",
-		fields = { { key = "unit", type = "unit" }, { key = "spell", type = "spell" } },
-		describe = function(condition)
-			return ("%s is casting %s"):format(condition.unit or "?", condition.spell or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			if not condition.spell or condition.spell == "" or not Unit.exists(unit) then return false end
-			return Unit.isCastingSpell(unit, condition.spell)
-		end,
-	})
-
-	register("unit_cast_interruptible", {
-		label = "Unit's cast is interruptible",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s's cast is interruptible"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			return Unit.exists(unit) and Unit.castInterruptible(unit)
-		end,
-	})
-
-	register("unit_level", {
-		label = "Unit level",
-		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
-		describe = function(condition)
-			return ("%s level %s %s"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			if not Unit.exists(unit) then return false end
-			return Compare.compare(Unit.level(unit), condition.op, tonumber(condition.value))
-		end,
-	})
-
-	register("unit_is_player", {
-		label = "Unit is a player",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is a player"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			return Unit.exists(unit) and Unit.isPlayer(unit)
-		end,
-	})
-
-	register("unit_classification", {
-		label = "Unit classification",
-		fields = { { key = "unit", type = "unit" }, { key = "value", type = "classification" } },
-		describe = function(condition)
-			return ("%s is %s"):format(condition.unit or "?", condition.value or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			if not Unit.exists(unit) then return false end
-			return Unit.classification(unit) == (condition.value)
-		end,
-	})
-
-	register("unit_threat_percent", {
-		label = "Threat on unit (scaled percent)",
-		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
-		describe = function(condition)
-			return ("threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			if not Unit.exists(unit) then return false end
-			local pct = Unit.threatPercent(unit)
-			if not pct then return false end
-			return Compare.compare(pct, condition.op, tonumber(condition.value))
-		end,
-	})
-
-	register("unit_is_tanking", {
-		label = "You are tanking the unit",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("you are tanking %s"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			return Unit.exists(unit) and Unit.isTanking(unit)
-		end,
-	})
-
-	register("unit_aura_remains", {
-		label = "Unit aura time remaining",
-		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
-		optional = { mine = true },
-		describe = function(condition)
-			return ("%s has %s with %s %ss left"):format(condition.unit or "?", condition.aura or "?",
-				condition.op or "?", tostring(condition.value or "?"))
-		end,
-		eval = function(condition)
-			-- nil = absent. A permanent aura reports 0 remaining; 0 is a number,
-			-- so it compares normally (0 > N fails for any positive N).
-			local remaining = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
-			if remaining == nil then return false end
-			return Compare.compare(remaining, condition.op, tonumber(condition.value))
-		end,
-	})
-
 	register("modifier_keys", {
-		label = "A modifier key is held",
+		label = "Modifier key held",
 		fields = { { key = "key", type = "modifier" } },
 		describe = function(condition)
 			return ("%s is held"):format(condition.key or "?")
@@ -486,7 +468,17 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	return order
+	local logicalOrder = {
+		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
+		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
+		"unit_moving", "unit_standing_still", "unit_is_tanking", "unit_threat_percent",
+		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
+		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
+		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_range",
+		"spell_ready", "spell_usable", "spell_cooldown_remaining",
+		"player_combo_points", "player_shapeshift_form", "modifier_keys", "lua",
+	}
+	return logicalOrder
 end
 
 ns.ConditionDefinitions = ConditionDefinitions

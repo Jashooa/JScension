@@ -494,16 +494,20 @@ end
 do
 	ok("Eval unknown type fails closed", Conditions.Eval({ type = "nope" }) == false)
 	local expectedTypes = {
-		"unit_target_type", "unit_health_percent", "unit_health",
-		"unit_power_percent", "unit_power", "unit_aura_present",
-		"unit_aura_missing", "unit_aura_stacks", "spell_ready", "spell_usable",
-		"spell_cooldown_remaining", "unit_exists", "unit_alive", "unit_hostile", "unit_casting",
-		"unit_moving", "unit_standing_still", "unit_in_combat", "unit_range",
-		"player_combo_points", "player_shapeshift_form", "unit_casting_spell",
-		"unit_cast_interruptible", "unit_level", "unit_is_player",
-		"unit_classification", "unit_threat_percent", "unit_is_tanking",
-		"unit_aura_remains", "modifier_keys", "lua",
+		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
+		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
+		"unit_moving", "unit_standing_still", "unit_is_tanking", "unit_threat_percent",
+		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
+		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
+		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_range",
+		"spell_ready", "spell_usable", "spell_cooldown_remaining",
+		"player_combo_points", "player_shapeshift_form", "modifier_keys", "lua",
 	}
+	eq("unit health label", Conditions.Registry.unit_health_percent.label, "Unit health percentage")
+	eq("spell ready label", Conditions.Registry.spell_ready.label, "Spell is ready")
+	eq("unit range label", Conditions.Registry.unit_range.label, "Unit is in spell range")
+	eq("aura label stays consistent", Conditions.Registry.unit_aura_present.label, "Unit has aura")
+	eq("aura remaining label stays consistent", Conditions.Registry.unit_aura_remains.label, "Unit aura time remaining")
 	local typeList = Conditions.TypeList()
 	local seenTypes = {}
 	local orderedTypes = #typeList == #expectedTypes
