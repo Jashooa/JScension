@@ -42,11 +42,6 @@ function Unit.distance(firstUnit, secondUnit)
 	return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
--- canAttack returns true when the unit is attackable by the player.
-function Unit.canAttack(unit)
-	return UnitCanAttack("player", unit) and true or false
-end
-
 -- isCasting returns true when the unit is casting or channeling.
 function Unit.isCasting(unit)
 	return CastState.Read(unit) ~= nil
@@ -108,12 +103,6 @@ function Unit.classification(unit)
 	return UnitClassification(unit)
 end
 
--- comboPoints returns the player's combo points on the unit, or nil when the
--- unit is not a valid combo target.
-function Unit.comboPoints(unit)
-	return GetComboPoints("player", unit)
-end
-
 -- threatPercent returns the source unit's threat on the target as the scaled
 -- percentage (100 = enough to pull), or nil when the target is not on the
 -- threat list.
@@ -126,21 +115,6 @@ end
 function Unit.isTanking(sourceUnit, targetUnit)
 	local status = UnitThreatSituation(sourceUnit, targetUnit)
 	return status ~= nil and status >= 3
-end
-
--- shapeshiftForm returns the index of the player's current shapeshift form,
--- or 0 when not in a form. The API is player-only.
-function Unit.shapeshiftForm()
-	return GetShapeshiftForm() or 0
-end
-
--- shapeshiftFormName returns the name of the player's current shapeshift
--- form, or nil when not in a form.
-function Unit.shapeshiftFormName()
-	local form = Unit.shapeshiftForm()
-	if not form or form == 0 then return nil end
-	local _, name = GetShapeshiftFormInfo(form)
-	return name
 end
 
 -- power returns the unit's raw power. powerType (0 mana, 1 rage, 2 focus,

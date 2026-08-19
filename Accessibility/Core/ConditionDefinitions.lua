@@ -16,7 +16,8 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	local Cooldown = dependencies.Cooldown
 	local Spell = dependencies.Spell
 	local Input = dependencies.Input
-	assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input,
+	local Player = dependencies.Player
+	assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input and Player,
 		"condition definitions require all game dependencies")
 
 	local registry = conditions.Registry
@@ -67,9 +68,9 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			elseif want == "player" then
 				return unit == "player"
 			elseif want == "enemy" then
-				return Unit.isAlive(unit) and Unit.canAttack(unit)
+				return Unit.isAlive(unit) and Player.canAttack(unit)
 			elseif want == "friendly" then
-				return Unit.isAlive(unit) and not Unit.canAttack(unit)
+				return Unit.isAlive(unit) and not Player.canAttack(unit)
 			end
 			return false
 		end,
@@ -83,7 +84,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 		eval = function(condition)
 			local unit = condition.unit
-			return Unit.isAlive(unit) and Unit.canAttack(unit)
+			return Unit.isAlive(unit) and Player.canAttack(unit)
 		end,
 	})
 
@@ -439,7 +440,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return ("combo points %s %s"):format(condition.op or "?", tostring(condition.value or "?"))
 		end,
 		eval = function(condition)
-			local points = Unit.comboPoints("target")
+			local points = Player.comboPoints("target")
 			if not points then return false end
 			return Compare.compare(points, condition.op, tonumber(condition.value))
 		end,
@@ -453,7 +454,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 		eval = function(condition)
 			if not condition.form or condition.form == "" then return false end
-			return Unit.shapeshiftFormName() == condition.form
+			return Player.shapeshiftFormName() == condition.form
 		end,
 	})
 

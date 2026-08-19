@@ -34,8 +34,9 @@ local Aura = ns.Aura
 local Cooldown = ns.Cooldown
 local Spell = ns.Spell
 local Input = ns.Input
+local Player = ns.Player
 local ConditionDefinitions = ns.ConditionDefinitions
-assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input and ConditionDefinitions,
+assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input and Player and ConditionDefinitions,
 	"load order: Core/Conditions before its dependencies")
 
 -- The derived fields the "lua" condition stores on its own table (compile
@@ -204,6 +205,7 @@ order = ConditionDefinitions.Build(Conditions, {
 	Cooldown = Cooldown,
 	Spell = Spell,
 	Input = Input,
+	Player = Player,
 })
 Conditions.Order = order
 

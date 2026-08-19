@@ -15,6 +15,7 @@ Utils\SpellTooltip.lua
 
 Game\CastState.lua
 Game\Unit.lua
+Game\Player.lua
 Game\Spell.lua
 Game\Aura.lua
 Game\Cast.lua
