@@ -1,324 +1,249 @@
-/* compatibility.dll - the Compatibility shim for the Ascension 3.3.5a client. v9.
+/* compatibility.dll - the Compatibility bridge for the Ascension 3.3.5a client.
  *
- * PURPOSE
- *   Registers the Lua global `Compatibility` so an (untrusted) rotation addon can
- *   run scripts under a trusted owner name, which unlocks the
- *   classifier-gated action APIs (CastSpellByID, UseAction,
- *   JumpOrAscendStart, ...). The owner name is DERIVED at runtime from the
- *   live trust manifest (ExtendedAnticheatMgr, Extensions.dll) - preferring
- *   AscensionUI (the always-loaded Ascension-owned core UI), then a stock
- *   "Blizzard_*" name, then any trusted name; a manifest with no trusted name fails cleanly
- *   instead of silently blocking. Frames created inside a Compatibility script
- *   inherit the trusted owner, so the addon's handlers cast directly for
- *   the rest of the session. Personal accessibility use.
+ * This file owns the DLL entry point, logging, trust-owner registration, and the
+ * registered callback. The callback runs on the game window thread and delegates:
  *
- * MECHANISM (why this shape)
- *   DllMain spawns SetupThread -> finds the game window (GxWindowClassD3d),
- *   VALIDATES the client layout (see validate_layout - the one check that
- *   matters before the next client update), subclasses the window, posts
- *   WM_APP+1. The subclass runs on the game's window thread - the main
- *   thread, where Lua is idle between messages - which is the only safe
- *   place to touch the FrameScript state. There it:
- *     1. derives the trusted owner from the manifest (once; failure =
- *        permanent, loud, no registration - the addon's issecure probe
- *        then reports the problem to the user)
- *     2. registers Compatibility -> Compatibility_cb via FUN_00817f90 (the game's OWN
- *        API-registration primitive - the stock UI registers its C APIs
- *        the same way; unhooked by the AC)
- *     3. self-tests SILENTLY (result to compatibility.log only) - verifies the
- *        (ok, err) return plumbing
- *     4. arms a 1s keepalive timer (see keepalive_tick)
+ *   - client_layout: client addresses and layout validation
+ *   - command_dispatch/debug_commands: internal native commands
+ *   - secure_executor/lua_bridge: trusted script execution and result replay
+ *   - trust_manifest: trusted owner selection
+ *   - window_lifecycle: subclassing, registration messages, and keepalive timing
  *
- *   Compatibility(script): reads arg 1 via FUN_0084e0e0 (lua_tolstring, the
- *   game's own reader), escapes it into a Lua string literal, and runs a
- *   pcall wrapper through FUN_00819210(script, OWNER, OWNER) - the
- *   classifier reads the owner for the duration -> allow path. The wrapper
- *   stashes the pcall result as a table in Compatibility_Res with the count in
- *   Compatibility_N; push_result replays the table onto the stack, so the
- *   caller sees the full pcall contract: (true, v1, v2, ...) on success,
- *   (false, err) on failure. The Lua
- *   return-value path is stock: the game's C-call wrapper reads the
- *   callback's EAX as the result count and FUN_00856010 copies that many
- *   16-byte slots to the caller, bottom-up (first pushed = first result).
+ * The callback descriptor is part of the client ABI. The game reads bytes at
+ * callback+0x10 and callback+0x4d..0x4f as metadata. Compatibility_cb therefore
+ * remains a naked stub with fixed padding and descriptor bytes b3 01 00. The
+ * build verifies those bytes after every rebuild. Do not replace the stub with
+ * an ordinary function or unload this DLL while the global is registered.
  *
- * CALLBACK DESCRIPTOR CONSTRAINT (do not "improve")
- *   The game's C-call wrapper FUN_00856550 reads the REGISTERED CALLBACK'S
- *   CODE BYTES as embedded per-function metadata: entry+0x10 (dword, the
- *   owner held for the callback's duration) and entry+0x4d/+0x4e/+0x4f
- *   (min args / flag / max args, consumed by FUN_00855de0), and
- *   FUN_0086b5a0 validates the callback pointer against loaded-module
- *   executable memory. A hand-written blob or anonymous copy carries wrong
- *   descriptor bytes and crashes the arg machinery (v5-v7).
- *   A plain -O2 function's bytes at +0x4d..0x4f are compiler accidents, so
- *   Compatibility_cb is a NAKED STUB that pins them: dead bytes at +0x4d..0x4f
- *   read flag=0x01 (the FUN_00855de0 vararg path - identical to the
- *   validated v8) and max=0x00 (no extra frame growth). Verify after every
- *   rebuild: objdump and confirm entry+0x4d/0x4e/0x4f == b3 01 00.
- *   Consequence: the module cannot be unloaded while Compatibility lives.
- *
- * LAYOUT VALIDATION (why the byte table)
- *   The five original targets plus the four Lua APIs are hardcoded; the
- *   client has no ASLR and the addresses are stable TODAY, but any client
- *   patch that shifts code turns the first call into a jump into arbitrary
- *   code in-process. SetupThread therefore compares the first 16 bytes of
- *   each target against snapshots taken from the current client before it
- *   subclasses or registers anything. Mismatch -> log + abort; never
- *   register. FUN_00819210 is hooked by Extensions (a pass-through): a
- *   5-byte E9 detour to 0x794ada60 with INT3 padding after it (hook-engine
- *   owned), so for it the check is the displacement (must land in
- *   Extensions' live range) and nothing else; unhooked targets are
- *   compared byte-for-byte. Rebuild the table when a client update lands.
- *
- * No hooks of our own, no .text patches, no global unlock state. Logs to
- * compatibility.log next to the DLL (ASCII only - the log and console cannot
- * render non-ASCII). fs=00000000 on DllMain-era lines is EXPECTED (the game has
- * not created the FrameScript state yet) - not evidence of anything wrong.
+ * Registration and client calls happen only after layout validation. The
+ * window lifecycle schedules them on the game's window thread, where FrameScript
+ * is idle between messages. Logs stay ASCII-only and live beside this DLL.
  */
 #include <windows.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <string.h>
+
+#include "client_api.h"
+#include "lua_bridge.h"
+#include "command_dispatch.h"
+#include "debug_commands.h"
+#include "trust_manifest.h"
+#include "client_layout.h"
+#include "secure_executor.h"
+#include "window_lifecycle.h"
 #include "common.h"
 
-/* The pcall wrapper stashes results in two globals: Compatibility_N (count) and
- * Compatibility_Res (table). push_result replays the table onto the stack. */
-#define RESULT_N_GLOBAL    "Compatibility_N"
-#define RESULT_RES_GLOBAL  "Compatibility_Res"
+/* Lua 5.1 type tag used to verify the registered global. */
+#define LUA_TYPE_FUNCTION 6
 
-/* ------------------------------------------------------------------ *
- * Game addresses. Stable because Ascension.exe has NO ASLR.
- * ------------------------------------------------------------------ */
-#define REGISTER_GLOBAL  0x00817f90   /* FUN_00817f90(name, cb): the game's Lua API registration (unhooked) */
-#define READ_STRING_ARG  0x0084e0e0   /* lua_tolstring(state, idx, &len) -> const char* (unhooked) */
-#define SECURE_EXEC      0x00819210   /* FUN_00819210(script, name, owner): the secure executor */
-#define FS_STATE         0x00d3f78c   /* global FrameScript state pointer (lua_State*) */
-#define OWNER_KEY        0x00d4139c   /* the classifier's owner lookup key (set during secure exec) */
-#define LUA_GETFIELD     0x0084e590   /* lua_getfield(state, idx, key): pushes the field value */
-#define LUA_TYPE         0x0084deb0   /* lua_type(state, idx): tt, -1 for invalid index */
-#define LUA_REMOVE       0x0084dc50   /* lua_remove(state, idx): pop (-1) and stack shifts */
-#define LUA_TOBOOLEAN    0x0084e0b0   /* lua_toboolean(state, idx) */
-#define LUA_TONUMBER     0x0084e030   /* lua_tonumber(state, idx) -> double */
-#define LUA_GETTOP       0x0084dbd0   /* lua_gettop(state) -> int */
-#define LUA_RAWGETI      0x0084e670   /* lua_rawgeti(state, idx, n): pushes t[n] */
-#define LUA_PUSHNUMBER   0x0084e2a0   /* lua_pushnumber(state, double): pushes a number */
-#define OBJMGR_LOOKUP    0x004d4db0   /* ClntObjMgrGetObjectPtr(guid_lo, guid_hi, typeMask) -> obj* (CONFIRMED) */
-#define LOS_TRACE        0x007a3b70   /* FUN_007a3b70(start, end, hit, dist, flags, 0). dist=input+output, init 1.0. flags=0x1020124. */
-#define CTM_FUNC         0x00727400   /* CGPlayer_C__ClickToMove(this, action, &guid, &pos, precision). HOOKED by Extensions — call through hook. */
-#define CTM_BASE         0x00ca11d8   /* ClickToMove struct base */
-#define GET_PLAYER_OBJ   0x004038f0   /* GetActivePlayerObject() -> obj* */
-#define HANDLE_TERRAIN_CLICK 0x0080c340   /* Spell_C__HandleTerrainClick(TerrainClickInfo*) -> nonzero on success */
-#define PENDING_SPELL_FLAGS  0x00d3f4e0   /* pending spell targeting-type flags; 0x40 = ground target */
-#define PENDING_SPELL        0x00d3f4e4   /* pending Spell_C*; 0 when no spell awaits targeting */
+/* Manifest layout bounds and printable-name checks. */
+#define MAX_TRUSTED_NAME_LENGTH 63
+#define SSO_INLINE_LENGTH       15
+#define MINIMUM_HEAP_ADDRESS    0x10000
 
-/* The ExtendedAnticheatMgr singleton address is NOT hardcoded here: Ascension
- * rebuilds Extensions.dll and its .data layout shifts (the 2026-08-13 build
- * moved the singleton ~12KB). find_ac_singleton() below locates it by SHAPE at
- * runtime; g_ac_singleton holds the result (0 = failed). */
+/* Keep log records bounded while reserving room for the FrameScript suffix. */
+#define LOG_BUFFER_SIZE 512
+#define LOG_SUFFIX_RESERVE 20
 
-#define LUA_GLOBALSINDEX (-10002)
-#define LUA_TNIL         0
-#define LUA_TFUNCTION    6    /* stock Lua 5.1 LUA_TFUNCTION enum; verify against the client's lua_type return */
+/* Trusted-owner manifest layout. */
+#define MANIFEST_ENTRY_SIZE          0x1c
+#define MANIFEST_NAME_LENGTH_OFFSET  0x10
+#define MANIFEST_TRUSTED_FLAG_OFFSET 0x18
+#define MAX_MANIFEST_ENTRIES         400
 
-/* Log path is derived from the DLL's own location at load - see init_logpath. */
-#define WM_COMPATIBILITY        (WM_APP + 1)   /* posted to the game window by SetupThread */
-#define COMPATIBILITY_TIMER_ID  0x4A4A         /* keepalive window timer id (high, no collision) */
-#define COMPATIBILITY_TIMER_MS  1000           /* 1s: reload recovery latency = one tick */
+typedef void (__cdecl *RegisterGlobalFunction)(const char *name, void *callback);
+typedef const char *(__cdecl *ReadStringArgumentFunction)(unsigned int state, int index,
+                                                          unsigned int *length);
+typedef void (__cdecl *SecureExecuteFunction)(const char *script,
+                                              const char *ownerName,
+                                              const char *callerName);
+typedef void (__cdecl *LuaGetFieldFunction)(unsigned int state, int index,
+                                            const char *name);
+typedef int (__cdecl *LuaTypeFunction)(unsigned int state, int index);
+typedef void (__cdecl *LuaRemoveFunction)(unsigned int state, int index);
+typedef int (__cdecl *LuaToBooleanFunction)(unsigned int state, int index);
+typedef void (__cdecl *LuaRawGetIntegerFunction)(unsigned int state, int index, int item);
 
-/* Named limits used across the manifest scan and the callback. */
-#define MAX_TRUSTED_NAME_LEN 63         /* longest trusted addon name (buffer = +1) */
-#define SSO_INLINE_MAX       15         /* std::string SSO inline threshold */
-#define BLIZZARD_PREFIX_LEN  9          /* strlen("Blizzard_") */
-#define MIN_HEAP_ADDR        0x10000    /* names and the vector live above this */
-#define MAX_SCRIPT_LEN       0x100000   /* escape-buffer sanity cap */
-#define EXT_BASE             0x79310000 /* Extensions.dll live range start */
-#define EXT_END              0x7a080000 /* Extensions.dll live range end */
-
-/* Client layout snapshots, 16 bytes each, taken from the current
- * ascension-live/Ascension.exe. Rebuild when the client updates. */
-static const unsigned char EXP_REGISTER_GLOBAL[16] = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x35,0x8c,0xf7,0xd3,0x00,0x6a,0x00,0x50};
-static const unsigned char EXP_READ_STRING_ARG[16] = {0x55,0x8b,0xec,0x56,0x8b,0x75,0x08,0x57,0x8b,0x7d,0x0c,0x8b,0xc7,0x8b,0xce,0xe8};
-static const unsigned char EXP_LUA_GETFIELD[16]    = {0x55,0x8b,0xec,0x83,0xec,0x10,0x8b,0x45,0x0c,0x53,0x56,0x8b,0x75,0x08,0x57,0x8b};
-static const unsigned char EXP_LUA_TYPE[16]        = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0xe8,0x02,0xfb,0xff,0xff,0x3d,0x78};
-static const unsigned char EXP_LUA_REMOVE[16]      = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x75,0x08,0x8b,0xce,0xe8,0x5f,0xfd,0xff};
-static const unsigned char EXP_LUA_TOBOOLEAN[16]   = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0xe8,0x02,0xf9,0xff,0xff,0x8b,0x48};
-static const unsigned char EXP_LUA_TONUMBER[16]    = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x8b,0x4d,0x08,0x83,0xec,0x10,0xe8,0x7f,0xf9,0xff};
-static const unsigned char EXP_LUA_GETTOP[16]      = {0x55,0x8b,0xec,0x8b,0x4d,0x08,0x8b,0x41,0x0c,0x2b,0x41,0x10,0xc1,0xf8,0x04,0x5d};
-static const unsigned char EXP_LUA_RAWGETI[16]     = {0x55,0x8b,0xec,0x8b,0x45,0x0c,0x56,0x8b,0x75,0x08,0x8b,0xce,0xe8,0x3f,0xf3,0xff};
-static const unsigned char EXP_LUA_PUSHNUMBER[16]  = {0x55,0x8b,0xec,0x8b,0x4d,0x08,0xdd,0x45,0x0c,0x8b,0x41,0x0c,0x8b,0x15,0x9c,0x13};
-static const unsigned char EXP_OBJMGR_LOOKUP[16]   = {0x55,0x8b,0xec,0x64,0x8b,0x0d,0x2c,0x00,0x00,0x00,0xa1,0xbc,0x39,0xd4,0x00,0x8b};
-static const unsigned char EXP_LOS_TRACE[16]       = {0x55,0x8b,0xec,0x83,0xec,0x18,0x8b,0x45,0x18,0x83,0x05,0xc4,0x04,0xce,0x00,0x01};
-static const unsigned char EXP_CTM_FUNC[16]        = {0xe9,0x3b,0x2f,0xff,0x78,0xcc,0x53,0x8b,0xd9,0x8b,0x43,0x08,0x8b,0x08,0x3b,0x0d};
-static const unsigned char EXP_GET_PLAYER_OBJ[16]  = {0xe8,0x9b,0xfe,0x0c,0x00,0x68,0xa0,0x00,0x00,0x00,0x68,0x18,0x1f,0x9e,0x00,0x6a};
-static const unsigned char EXP_SECURE_EXEC[16]     = {0x55,0x8b,0xec,0x51,0x83,0x05,0xa0,0x13,0xd4,0x00,0x01,0xa1,0x9c,0x13,0xd4,0x00};
-static const unsigned char EXP_HANDLE_TERRAIN_CLICK[16] = {0x55,0x8b,0xec,0xa1,0xe4,0xf4,0xd3,0x00,0x85,0xc0,0x75,0x04,0x32,0xc0,0x5d,0xc3};
-
-
-typedef void  (__cdecl *Register_t)(const char*, void*);
-typedef const char* (__cdecl *ReadStr_t)(unsigned int, int, unsigned int*);
-typedef void  (__cdecl *SecExec_t)(const char*, const char*, const char*);
-typedef void  (__cdecl *GetField_t)(unsigned int, int, const char*);
-typedef int   (__cdecl *Type_t)(unsigned int, int);
-typedef void  (__cdecl *Remove_t)(unsigned int, int);
-typedef int   (__cdecl *ToBool_t)(unsigned int, int);
-typedef double (__cdecl *ToNumber_t)(unsigned int, int);
-typedef int   (__cdecl *GetTop_t)(unsigned int);
-typedef void  (__cdecl *RawGeti_t)(unsigned int, int, int);
-
-/* g_registered: 1 after the first registration (WM_COMPATIBILITY arrives once).
- * g_last_fs: the FrameScript state pointer at the last time we touched the
- *   state - used ONLY as a don't-touch-during-reload guard (see
- *   keepalive_tick); the re-register DECISION is the resolution check.
- * g_owner / g_owner_name: the manifest-derived trusted owner ("" = failed).
- * g_oldProc: the game's original window proc - all non-Compatibility messages
- *   pass through untouched. The subclass is NEVER restored - the keepalive
- *   timer needs it. */
-static int g_registered = 0;
-static unsigned long g_last_fs = 0;
-static char g_owner[MAX_TRUSTED_NAME_LEN + 1];
-static const char* g_owner_name = NULL;
-static WNDPROC g_oldProc = NULL;
-static HMODULE g_hModule = NULL;  /* our own module, for FreeLibraryAndExitThread on fatal error */
-static int g_waiting_logged = 0;  /* one-shot "waiting for manifest" log */
+/* Registration state belongs to the game-thread callbacks; window mechanics
+ * live in window_lifecycle.c. */
+static int g_compatibility_registered = 0;
+static unsigned long g_last_frame_script_state = 0;
+static char g_owner[MAX_TRUSTED_NAME_LENGTH + 1];
+static const char *g_owner_name = NULL;
+static HMODULE g_module_handle = NULL;
+static int g_waiting_logged = 0;
+static unsigned long g_anticheat_singleton = 0;
+static char g_log_path[MAX_PATH];
 
 /* ---------- logging ---------- */
 
-static char g_logpath[MAX_PATH];
+/* Store the log beside the module so the injector and shim share one artifact. */
+static void initialize_log_path(HMODULE moduleHandle) {
+    static const char logFileName[] = "compatibility.log";
+    DWORD pathLength = GetModuleFileNameA(moduleHandle, g_log_path, MAX_PATH);
+    char *lastSeparator = NULL;
+    DWORD pathIndex;
 
-/* The log lives next to the DLL (the injector drops compatibility.dll beside
- * compatibility.exe), so derive the path from the DLL's own location instead of
- * hardcoding C:\local. Runs once at DllMain, before the first logmsg. */
-static void init_logpath(HMODULE self) {
-    static const char LOGNAME[] = "compatibility.log";
-    DWORD n = GetModuleFileNameA(self, g_logpath, MAX_PATH);
-    if (n >= MAX_PATH) n = MAX_PATH - 1;   /* truncated: stay inside the buffer */
-    char* slash = NULL;
-    DWORD i;
-    for (i = 0; i < n; i++) {
-        if (g_logpath[i] == '\\' || g_logpath[i] == '/') slash = g_logpath + i;
+    if (pathLength >= MAX_PATH) pathLength = MAX_PATH - 1;
+    for (pathIndex = 0; pathIndex < pathLength; pathIndex++) {
+        if (g_log_path[pathIndex] == '\\' || g_log_path[pathIndex] == '/') {
+            lastSeparator = g_log_path + pathIndex;
+        }
     }
-    if (slash) memcpy(slash + 1, LOGNAME, sizeof(LOGNAME));
-    else memcpy(g_logpath, LOGNAME, sizeof(LOGNAME));
+    if (lastSeparator) memcpy(lastSeparator + 1, logFileName, sizeof(logFileName));
+    else memcpy(g_log_path, logFileName, sizeof(logFileName));
 }
 
-/* Append a buffer to the log file - the one place the file is opened, written
- * and closed. logmsgf builds the buffer (logmsg delegates to it); this does the I/O. */
-static void log_write(const char* buf, int len) {
-    HANDLE h = CreateFileA(g_logpath, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                           NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h == INVALID_HANDLE_VALUE) return;
-    DWORD n;
-    WriteFile(h, buf, (DWORD)len, &n, NULL);
-    CloseHandle(h);
+static void write_log(const char *buffer, int length) {
+    HANDLE logHandle = CreateFileA(g_log_path, FILE_APPEND_DATA,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_ALWAYS,
+                                    FILE_ATTRIBUTE_NORMAL, NULL);
+    DWORD bytesWritten;
+    if (logHandle == INVALID_HANDLE_VALUE) return;
+    WriteFile(logHandle, buffer, (DWORD)length, &bytesWritten, NULL);
+    CloseHandle(logHandle);
 }
 
-/* Append a printf-formatted line to the log: "[HH:MM:SS.mmm] [tid] <msg>
- * (fs=STATE)". Timestamp is local wall-clock (GetLocalTime); tid is the writing
- * thread; fs is the FrameScript state pointer - the value that proves which Lua
- * state a step ran against (and the /reload change). DllMain-era lines show
- * fs=00000000, the expected "state not created yet", not evidence of a fault.
- * Uses wvsprintfA (the user32 varargs variant - the CRT's vsnprintf is not
- * linked here). */
-static void logmsgf(const char* fmt, ...) {
-    SYSTEMTIME st;
-    va_list ap;
-    char buf[512];
-    int len;
-    GetLocalTime(&st);
-    len = wsprintfA(buf, "[%02u:%02u:%02u.%03u] [%lu] ",
-                    st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
-                    (unsigned long)GetCurrentThreadId());
-    va_start(ap, fmt);
-    len += wvsprintfA(buf + len, fmt, ap);
-    va_end(ap);
-    len += wsprintfA(buf + len, " (fs=%08lx)\r\n", *(volatile unsigned long*)FS_STATE);
-    log_write(buf, len);
+/* Keep every line bounded. Logging must not corrupt shim state while reporting
+ * a client-layout or injection failure. */
+static void log_messagef(const char *format, ...) {
+    SYSTEMTIME currentTime;
+    va_list arguments;
+    char buffer[LOG_BUFFER_SIZE];
+    int prefixLength;
+    int messageLength;
+    int totalLength;
+
+    GetLocalTime(&currentTime);
+    prefixLength = snprintf(buffer, sizeof(buffer), "[%02u:%02u:%02u.%03u] [%lu] ",
+                            currentTime.wHour, currentTime.wMinute,
+                            currentTime.wSecond, currentTime.wMilliseconds,
+                            (unsigned long)GetCurrentThreadId());
+    if (prefixLength < 0 || prefixLength >= (int)sizeof(buffer)) return;
+
+    va_start(arguments, format);
+    messageLength = vsnprintf(buffer + prefixLength,
+                               sizeof(buffer) - (size_t)prefixLength, format, arguments);
+    va_end(arguments);
+    if (messageLength < 0 ||
+        messageLength >= (int)(sizeof(buffer) - (size_t)prefixLength)) {
+        messageLength = (int)sizeof(buffer) - prefixLength - 1;
+    }
+    totalLength = prefixLength + messageLength;
+    if (totalLength > (int)sizeof(buffer) - LOG_SUFFIX_RESERVE) {
+        totalLength = (int)sizeof(buffer) - LOG_SUFFIX_RESERVE;
+    }
+    totalLength += snprintf(buffer + totalLength, sizeof(buffer) - (size_t)totalLength,
+                            " (fs=%08lx)\r\n",
+                            *(volatile unsigned long *)FRAME_SCRIPT_STATE);
+    if (totalLength > 0 && totalLength < (int)sizeof(buffer)) {
+        write_log(buffer, totalLength);
+    }
 }
 
-/* Append a fixed string: logmsgf("%s", s). */
-static void logmsg(const char* s) {
-    logmsgf("%s", s);
+static void log_message(const char *message) {
+    log_messagef("%s", message);
 }
 
-/* Fatal error BEFORE anything is installed (no subclass yet): log, then unload
- * the DLL and exit the setup thread. FreeLibraryAndExitThread drops the
- * LoadLibrary refcount and exits atomically, leaving the game process clean so
- * the user can re-inject (LoadLibrary re-runs DllMain) without a restart. Only
- * safe pre-subclass - once SubclassProc is installed the DLL must stay resident. */
-static void __attribute__((noreturn)) fatal_exit(const char* msg) {
-    logmsg(msg);
-    FreeLibraryAndExitThread(g_hModule, 1);
+static void __attribute__((noreturn)) fatal_exit(const char *message) {
+    log_message(message);
+    FreeLibraryAndExitThread(g_module_handle, 1);
 }
 
+/* ---------- trusted-owner manifest ---------- */
 
+/* Locate the trusted-owner manifest by its stable in-memory shape. The
+ * Extensions.dll image moves, but the singleton still contains:
+ *   [vftable in module][heap vector begin][heap vector end] */
 
-/* ---------- runtime AC singleton resolution ---------- */
+static int valid_manifest_entry(unsigned long entryAddress) {
+    unsigned int nameLength;
+    unsigned int trustedFlag;
+    unsigned int nameIndex;
+    const char *name;
 
-/* The ExtendedAnticheatMgr singleton lives in Extensions.dll, which Ascension
- * rebuilds (2026-08-13 moved it from 0x79ef603c). Its address is found by
- * SHAPE, not by hardcoded address: scan Extensions.dll's writable sections for
- *   [ vftable-in-image ][ heap begin ][ heap end ]
- * where (end-begin) is a whole number of 0x1c-byte manifest entries and the
- * first entry decodes to a printable addon name with a 0/1 flag. That shape is
- * stable across rebuilds (std::string SSO + uint32 flag, and the singleton's
- * member order). Returns the singleton address, or 0 on failure. */
-#define AC_ENTRY_LEN   0x1c   /* {std::string name (MSVC SSO, 0x18 bytes), uint32 flag} */
-#define AC_ENTRY_SSIZE 0x10   /* std::string::_Mysize */
-#define AC_ENTRY_FLAG  0x18   /* flag: 1 = trusted */
-#define AC_MAX_ENTRIES 400    /* observed 237, capacity 316; bound the walk */
-
-static unsigned long g_ac_singleton = 0;
-
-static int valid_ac_entry(unsigned long e) {
-    unsigned int size, flag, i;
-    const char* name;
-    if (IsBadReadPtr((void*)e, AC_ENTRY_LEN)) return 0;
-    size = *(unsigned int*)(e + AC_ENTRY_SSIZE);
-    flag = *(unsigned int*)(e + AC_ENTRY_FLAG);
-    if (size > MAX_TRUSTED_NAME_LEN || flag > 1) return 0;
-    name = (size <= SSO_INLINE_MAX) ? (const char*)e : *(const char**)e;   /* SSO inline vs heap */
-    if ((unsigned long)name < MIN_HEAP_ADDR || IsBadStringPtrA(name, (UINT_PTR)size + 1)) return 0;
-    for (i = 0; i < size; i++) {
-        unsigned char c = (unsigned char)name[i];
-        if (c < 0x20 || c > 0x7e) return 0;
+    if (IsBadReadPtr((void *)entryAddress, MANIFEST_ENTRY_SIZE)) return 0;
+    nameLength = *(unsigned int *)(entryAddress + MANIFEST_NAME_LENGTH_OFFSET);
+    trustedFlag = *(unsigned int *)(entryAddress + MANIFEST_TRUSTED_FLAG_OFFSET);
+    if (nameLength > MAX_TRUSTED_NAME_LENGTH || trustedFlag > 1) return 0;
+    name = (nameLength <= SSO_INLINE_LENGTH)
+        ? (const char *)entryAddress
+        : *(const char **)entryAddress;
+    if ((unsigned long)name < MINIMUM_HEAP_ADDRESS ||
+        IsBadStringPtrA(name, (UINT_PTR)nameLength + 1)) return 0;
+    for (nameIndex = 0; nameIndex < nameLength; nameIndex++) {
+        unsigned char character = (unsigned char)name[nameIndex];
+        if (character < 0x20 || character > 0x7e) return 0;
     }
     return 1;
 }
 
-static unsigned long find_ac_singleton(void) {
-    HMODULE ext = GetModuleHandleA("Extensions.dll");
-    IMAGE_DOS_HEADER* dos;
-    IMAGE_NT_HEADERS* nt;
-    IMAGE_SECTION_HEADER* sec;
-    unsigned long base, size, i;
-    if (!ext) { logmsg("ac: Extensions.dll not found"); return 0; }
-    dos = (IMAGE_DOS_HEADER*)ext;
-    if (IsBadReadPtr(dos, sizeof(*dos)) || dos->e_magic != IMAGE_DOS_SIGNATURE) {
-        logmsg("ac: bad DOS header"); return 0;
+static unsigned long find_anticheat_singleton(void) {
+    HMODULE extensionsModule = GetModuleHandleA("Extensions.dll");
+    IMAGE_DOS_HEADER *dosHeader;
+    IMAGE_NT_HEADERS *ntHeaders;
+    IMAGE_SECTION_HEADER *sectionHeader;
+    unsigned long moduleBase;
+    unsigned long moduleImageSize;
+    unsigned long sectionIndex;
+
+    if (!extensionsModule) {
+        log_message("ac: Extensions.dll not found");
+        return 0;
     }
-    nt = (IMAGE_NT_HEADERS*)((unsigned char*)ext + dos->e_lfanew);
-    if (IsBadReadPtr(nt, sizeof(*nt)) || nt->Signature != IMAGE_NT_SIGNATURE) {
-        logmsg("ac: bad NT header"); return 0;
+    dosHeader = (IMAGE_DOS_HEADER *)extensionsModule;
+    if (IsBadReadPtr(dosHeader, sizeof(*dosHeader)) ||
+        dosHeader->e_magic != IMAGE_DOS_SIGNATURE) {
+        log_message("ac: bad DOS header");
+        return 0;
     }
-    base = (unsigned long)ext;
-    size = nt->OptionalHeader.SizeOfImage;
-    sec = IMAGE_FIRST_SECTION(nt);
-    for (i = 0; i < nt->FileHeader.NumberOfSections; i++, sec++) {
-        unsigned long start, ssize, end, addr, vft, begin, vend, n;
-        if (!(sec->Characteristics & IMAGE_SCN_MEM_WRITE)) continue;  /* singleton is in a writable section */
-        start = base + sec->VirtualAddress;
-        ssize = sec->Misc.VirtualSize ? sec->Misc.VirtualSize : sec->SizeOfRawData;
-        if (start + ssize > base + size) ssize = base + size - start;
-        for (addr = start; addr + 12 <= start + ssize; addr += 4) {
-            vft = *(unsigned long*)addr;
-            begin = *(unsigned long*)(addr + 4);
-            vend = *(unsigned long*)(addr + 8);
-            if (!(vft >= base && vft < base + size)) continue;          /* vftable: inside Extensions.dll */
-            if (!(begin > MIN_HEAP_ADDR && (begin < base || begin >= base + size))) continue;  /* vector: on heap */
-            if (vend <= begin) continue;
-            n = vend - begin;
-            if (n % AC_ENTRY_LEN || n / AC_ENTRY_LEN < 1 || n / AC_ENTRY_LEN > AC_MAX_ENTRIES) continue;
-            if (!valid_ac_entry(begin)) continue;
-            logmsgf("ac: singleton resolved at %08lx (vftable %08lx, %u entries)",
-                    addr, vft, (unsigned)(n / AC_ENTRY_LEN));
-            return addr;
+    ntHeaders = (IMAGE_NT_HEADERS *)((unsigned char *)extensionsModule +
+                                      dosHeader->e_lfanew);
+    if (IsBadReadPtr(ntHeaders, sizeof(*ntHeaders)) ||
+        ntHeaders->Signature != IMAGE_NT_SIGNATURE) {
+        log_message("ac: bad NT header");
+        return 0;
+    }
+    moduleBase = (unsigned long)extensionsModule;
+    moduleImageSize = ntHeaders->OptionalHeader.SizeOfImage;
+    sectionHeader = IMAGE_FIRST_SECTION(ntHeaders);
+    for (sectionIndex = 0;
+         sectionIndex < ntHeaders->FileHeader.NumberOfSections;
+         sectionIndex++, sectionHeader++) {
+        unsigned long sectionStart;
+        unsigned long sectionSize;
+        unsigned long candidateAddress;
+        if (!(sectionHeader->Characteristics & IMAGE_SCN_MEM_WRITE)) continue;
+        sectionStart = moduleBase + sectionHeader->VirtualAddress;
+        sectionSize = sectionHeader->Misc.VirtualSize
+            ? sectionHeader->Misc.VirtualSize
+            : sectionHeader->SizeOfRawData;
+        if (sectionStart + sectionSize > moduleBase + moduleImageSize) {
+            sectionSize = moduleBase + moduleImageSize - sectionStart;
+        }
+        for (candidateAddress = sectionStart;
+             candidateAddress + 12 <= sectionStart + sectionSize;
+             candidateAddress += 4) {
+            unsigned long vtableAddress = *(unsigned long *)candidateAddress;
+            unsigned long vectorBegin = *(unsigned long *)(candidateAddress + 4);
+            unsigned long vectorEnd = *(unsigned long *)(candidateAddress + 8);
+            unsigned long vectorSize;
+            if (!(vtableAddress >= moduleBase &&
+                  vtableAddress < moduleBase + moduleImageSize)) continue;
+            if (!(vectorBegin > MINIMUM_HEAP_ADDRESS &&
+                  (vectorBegin < moduleBase ||
+                   vectorBegin >= moduleBase + moduleImageSize))) continue;
+            if (vectorEnd <= vectorBegin) continue;
+            vectorSize = vectorEnd - vectorBegin;
+            if (vectorSize % MANIFEST_ENTRY_SIZE ||
+                vectorSize / MANIFEST_ENTRY_SIZE < 1 ||
+                vectorSize / MANIFEST_ENTRY_SIZE > MAX_MANIFEST_ENTRIES) continue;
+            if (!valid_manifest_entry(vectorBegin)) continue;
+            log_messagef("ac: singleton resolved at %08lx (vftable %08lx, %u entries)",
+                         candidateAddress, vtableAddress,
+                         (unsigned)(vectorSize / MANIFEST_ENTRY_SIZE));
+            return candidateAddress;
         }
     }
     return 0;
@@ -326,733 +251,167 @@ static unsigned long find_ac_singleton(void) {
 
 /* ---------- layout validation ---------- */
 
-/* Compare the live bytes of every hardcoded code target against the
- * snapshots; verify the AC singleton's vtable dword. SECURE_EXEC is
- * HOOKED by Extensions (a pass-through): the live dump shows a 5-byte E9
- * detour to 0x794ada60 with the next six bytes INT3 padding (hook-engine
- * owned) before the original body resumes - so for a hooked function the
- * check is the displacement (must land in Extensions' live range) and
- * NOTHING ELSE; the post-detour bytes are not ours to compare. An
- * unhooked function must match the full 16-byte snapshot. Any mismatch -
- * or an E9 that no longer points into Extensions - -> log and return 0;
- * SetupThread then aborts before subclassing, so a patched client can
- * never turn the first call into a jump into arbitrary code. Runs once at
- * injection, on the setup thread. */
+/* Client addresses and byte snapshots have one owner: client_layout.c. */
 static int validate_layout(void) {
-    struct { unsigned long va; const unsigned char* exp; const char* name; } checks[] = {
-        { REGISTER_GLOBAL, EXP_REGISTER_GLOBAL, "REGISTER_GLOBAL" },
-        { READ_STRING_ARG, EXP_READ_STRING_ARG, "READ_STRING_ARG" },
-        { LUA_GETFIELD,    EXP_LUA_GETFIELD,    "LUA_GETFIELD" },
-        { LUA_TYPE,        EXP_LUA_TYPE,        "LUA_TYPE" },
-        { LUA_REMOVE,      EXP_LUA_REMOVE,      "LUA_REMOVE" },
-        { LUA_TOBOOLEAN,   EXP_LUA_TOBOOLEAN,   "LUA_TOBOOLEAN" },
-        { LUA_TONUMBER,    EXP_LUA_TONUMBER,    "LUA_TONUMBER" },
-        { LUA_GETTOP,      EXP_LUA_GETTOP,      "LUA_GETTOP" },
-        { LUA_RAWGETI,     EXP_LUA_RAWGETI,     "LUA_RAWGETI" },
-        { LUA_PUSHNUMBER,  EXP_LUA_PUSHNUMBER,  "LUA_PUSHNUMBER" },
-        { OBJMGR_LOOKUP,   EXP_OBJMGR_LOOKUP,   "OBJMGR_LOOKUP" },
-        { LOS_TRACE,       EXP_LOS_TRACE,       "LOS_TRACE" },
-        { CTM_FUNC,        EXP_CTM_FUNC,        "CTM_FUNC" },
-        { GET_PLAYER_OBJ,  EXP_GET_PLAYER_OBJ,  "GET_PLAYER_OBJ" },
-        { HANDLE_TERRAIN_CLICK, EXP_HANDLE_TERRAIN_CLICK, "HANDLE_TERRAIN_CLICK" },
-
-    };
-    unsigned char b[16];
-    int ok = 1, i;
-    for (i = 0; i < (int)(sizeof(checks) / sizeof(checks[0])); i++) {
-        if (IsBadReadPtr((void*)checks[i].va, 16)) {
-            logmsgf("layout: %s unreadable", checks[i].name); ok = 0; continue;
-        }
-        memcpy(b, (void*)checks[i].va, 16);
-        if (memcmp(b, checks[i].exp, 16) != 0) {
-            logmsgf("layout: %s mismatch (%02x %02x %02x %02x... != %02x %02x %02x %02x...)",
-                    checks[i].name, b[0], b[1], b[2], b[3],
-                    checks[i].exp[0], checks[i].exp[1], checks[i].exp[2], checks[i].exp[3]);
-            ok = 0;
-        }
+    int valid = client_layout_validate(log_messagef);
+    if (!valid) {
+        log_message("layout: REFUSING - client layout changed; rebuild with new snapshots");
     }
-    if (IsBadReadPtr((void*)SECURE_EXEC, 16)) {
-        logmsg("layout: FUN_00819210 unreadable"); ok = 0;
-    } else {
-        memcpy(b, (void*)SECURE_EXEC, 16);
-        if (b[0] == 0xE9) {                       /* hooked by Extensions (pass-through) */
-            unsigned long tgt = SECURE_EXEC + 5 + (unsigned long)*(long*)(b + 1);
-            if (tgt < EXT_BASE || tgt > EXT_END) {
-                logmsgf("layout: FUN_00819210 hook target out of Extensions range (%08lx)", tgt);
-                ok = 0;
-            }
-            /* post-detour bytes are hook-engine owned (INT3 padding etc.) -
-             * the displacement is the whole check. */
-        } else if (memcmp(b, EXP_SECURE_EXEC, 16) != 0) {
-            logmsg("layout: FUN_00819210 prologue/body mismatch"); ok = 0;
-        }
-    }
-    if (!ok)
-        logmsg("layout: REFUSING - client layout changed; rebuild with new snapshots");
-    return ok;
-}
-
-/* ---------- manifest-derived trusted owner ---------- */
-
-
-/* Walk the live trust manifest (the vector at singleton+4) and pick the
- * best trusted (flag=1) name. Preference order: AscensionUI (the always-
- * loaded Ascension-owned core UI, present on every server), then a stock
- * "Blizzard_*" (the always-loaded set), then any trusted name. Rationale:
- * the owner must be an addon the server believes is legitimately RUNNING on
- * this account/server - a disabled or mode-specific addon would be a
- * trivially-checkable lie. Every read is
- * bounded (entry count cap, IsBadReadPtr/IsBadStringPtrA, name length cap).
- * Failure -> "" : a manifest that dropped every trusted entry (or a changed
- * layout) becomes a LOUD clean failure - no registration, the addon's
- * issecure probe reports it - instead of a mystery block. Runs once, on the
- * window thread, at first registration. */
-static const char* choose_owner(void) {
-    unsigned char* begin = *(unsigned char**)(g_ac_singleton + 4);
-    unsigned char* end = *(unsigned char**)(g_ac_singleton + 8);
-    const char* first = NULL;              /* first trusted name (last resort) */
-    unsigned int first_size = 0;
-    const char* blizz = NULL;              /* first Blizzard_* trusted (fallback) */
-    unsigned int blizz_size = 0;
-    unsigned int count, i;
-    if (!begin || !end || end < begin) { logmsg("owner: manifest vector invalid"); return ""; }
-    count = (unsigned int)(end - begin) / AC_ENTRY_LEN;
-    if (count == 0 || count > AC_MAX_ENTRIES) {
-        logmsgf("owner: manifest count %u implausible", count); return "";
-    }
-    for (i = 0; i < count; i++) {
-        unsigned char* e = begin + (size_t)i * AC_ENTRY_LEN;
-        unsigned int size, flag;
-        const char* name;
-        if (IsBadReadPtr(e, AC_ENTRY_LEN)) break;
-        size = *(unsigned int*)(e + AC_ENTRY_SSIZE);
-        if (size > MAX_TRUSTED_NAME_LEN) continue;                       /* sanity: no trusted name is longer */
-        name = (size <= SSO_INLINE_MAX) ? (const char*)e : *(const char**)e;   /* MSVC SSO: inline vs heap */
-        if ((size_t)name < MIN_HEAP_ADDR || IsBadStringPtrA(name, MAX_TRUSTED_NAME_LEN + 1)) continue;
-        flag = *(unsigned int*)(e + AC_ENTRY_FLAG);
-        if (flag != 1) continue;
-        if (!first) { first = name; first_size = size; }
-        if (strcmp(name, "AscensionUI") == 0) {        /* best: always-loaded Ascension core */
-            size = size < MAX_TRUSTED_NAME_LEN ? size : MAX_TRUSTED_NAME_LEN;
-            memcpy(g_owner, name, size); g_owner[size] = 0;
-            logmsgf("owner: derived from manifest: %s (entry %u/%u)", g_owner, i, count);
-            return g_owner;
-        }
-        if (!blizz && strncmp(name, "Blizzard_", BLIZZARD_PREFIX_LEN) == 0) {  /* fallback: always-loaded stock */
-            blizz = name; blizz_size = size;
-        }
-    }
-    if (blizz) {
-        blizz_size = blizz_size < MAX_TRUSTED_NAME_LEN ? blizz_size : MAX_TRUSTED_NAME_LEN;
-        memcpy(g_owner, blizz, blizz_size); g_owner[blizz_size] = 0;
-        logmsgf("owner: derived from manifest: %s (no AscensionUI)", g_owner);
-        return g_owner;
-    }
-    if (first) {
-        first_size = first_size < MAX_TRUSTED_NAME_LEN ? first_size : MAX_TRUSTED_NAME_LEN;
-        memcpy(g_owner, first, first_size); g_owner[first_size] = 0;
-        logmsgf("owner: derived from manifest: %s (no AscensionUI/Blizzard_* trusted)", g_owner);
-        return g_owner;
-    }
-    logmsg("owner: NO trusted name in manifest");
-    return "";
+    return valid;
 }
 
 /* ---------- the Compatibility Lua global ---------- */
 
-/* The pcall wrapper the user script is embedded into. The script is escaped
- * into a Lua string literal, so loadstring compiles it; pcall runs it; the
- * (ok, err) pair is stashed in the globals Compatibility_Ok / Compatibility_Err for
- * Compatibility_body to push back. This wrapper itself can never throw (only
- * assignments + loadstring + pcall), so FUN_00819210 never sees an error. */
-static const char WRAP_PRE[]  = "local f,e=loadstring(\"";
-static const char WRAP_POST[] = "\");local function cap(...)return select('#',...),{...}end;if f then local n,t=cap(pcall(f));" RESULT_N_GLOBAL "=n;" RESULT_RES_GLOBAL "=t else " RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,e}end";
-static const char FAIL_NOSCRIPT[] = RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,\"Compatibility: no script argument\"}";
-static const char FAIL_NUL[]      = RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,\"Compatibility: script contains a NUL byte\"}";
-static const char FAIL_ALLOC[]    = RESULT_N_GLOBAL "=2;" RESULT_RES_GLOBAL "={false,\"Compatibility: out of memory\"}";
+/* The callback reads a script, handles native commands, then delegates all
+ * other scripts to the trusted executor. */
 
-/* Escape arbitrary script bytes into a Lua string literal: backslash and
- * double-quote are backslash-escaped, \n \r \t become escapes, and every
- * other control or 8-bit byte becomes a 3-digit decimal escape (\ddd -
- * always three digits so a following digit can never merge into it). A NUL
- * byte cannot appear in a Lua literal: returns NULL. Heap buffer, caller
- * frees. */
-static char* escape_literal(const char* s, unsigned int len) {
-    char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, (size_t)len * 4 + 1);
-    char* p = buf;
-    unsigned int i;
-    if (!buf) return NULL;
-    for (i = 0; i < len; i++) {
-        unsigned char c = (unsigned char)s[i];
-        switch (c) {
-        case '\\': *p++ = '\\'; *p++ = '\\'; break;
-        case '"':  *p++ = '\\'; *p++ = '"';  break;
-        case '\n': *p++ = '\\'; *p++ = 'n';  break;
-        case '\r': *p++ = '\\'; *p++ = 'r';  break;
-        case '\t': *p++ = '\\'; *p++ = 't';  break;
-        case 0:    HeapFree(GetProcessHeap(), 0, buf); return NULL;
-        default:
-            if (c < 0x20 || c >= 0x80) {
-                *p++ = '\\';
-                *p++ = (char)('0' + c / 100);
-                *p++ = (char)('0' + (c / 10) % 10);
-                *p++ = (char)('0' + c % 10);
-            } else {
-                *p++ = (char)c;
-            }
-        }
-    }
-    *p = 0;
-    return buf;
-}
-
-/* Replay the stashed result table onto the Lua stack. Reads Compatibility_N
- * (count) and Compatibility_Res (table), pushes Res[1..N], removes the table,
- * returns N. Compatibility_body returns this count so the game's wrapper
- * copies exactly that many 16-byte slots. */
-static int push_result(unsigned int state) {
-    GetField_t gf = (GetField_t)LUA_GETFIELD;
-    ToNumber_t tn = (ToNumber_t)LUA_TONUMBER;
-    RawGeti_t rgi = (RawGeti_t)LUA_RAWGETI;
-    GetTop_t top = (GetTop_t)LUA_GETTOP;
-    Remove_t rm = (Remove_t)LUA_REMOVE;
-    int i, n, tbl;
-
-    gf(state, LUA_GLOBALSINDEX, RESULT_N_GLOBAL);
-    n = (int)tn(state, -1);
-    rm(state, -1);
-
-    gf(state, LUA_GLOBALSINDEX, RESULT_RES_GLOBAL);
-    tbl = top(state);
-    for (i = 1; i <= n; i++)
-        rgi(state, tbl, i);
-    rm(state, tbl);
-    return n;
-}
-
-/* Parse a hex GUID (with optional 0x prefix) from a string pointer.
- * Advances *pp past the hex digits. Returns 1 if at least one digit parsed. */
-static int parse_guid(const char** pp, const char* end, unsigned int* out_lo, unsigned int* out_hi) {
-    unsigned long long full = 0;
-    int found = 0;
-    const char* p = *pp;
-    while (p < end && *p == ' ') p++;
-    if (p + 1 < end && p[0] == '0' && (p[1] == 'x' || p[1] == 'X')) p += 2;
-    while (p < end && ((*p >= '0' && *p <= '9') || (*p >= 'a' && *p <= 'f') || (*p >= 'A' && *p <= 'F'))) {
-        full = (full << 4) | ((*p >= '0' && *p <= '9') ? *p - '0' :
-               (*p >= 'a' && *p <= 'f') ? *p - 'a' + 10 : *p - 'A' + 10);
-        p++; found = 1;
-    }
-    *out_lo = (unsigned int)(full & 0xFFFFFFFF);
-    *out_hi = (unsigned int)(full >> 32);
-    *pp = p;
-    return found;
-}
-
-/* Parse a signed float from a string pointer. Advances *pp. */
-static float parse_float(const char** pp, const char* end) {
-    const char* p = *pp;
-    double val = 0; int neg = 0;
-    while (p < end && *p == ' ') p++;
-    if (p < end && *p == '-') { neg = 1; p++; }
-    while (p < end && *p >= '0' && *p <= '9') { val = val * 10 + (*p - '0'); p++; }
-    if (p < end && *p == '.') {
-        double frac = 0, fdiv = 1;
-        p++;
-        while (p < end && *p >= '0' && *p <= '9') { frac = frac * 10 + (*p - '0'); fdiv *= 10; p++; }
-        val += frac / fdiv;
-    }
-    *pp = p;
-    return (float)(neg ? -val : val);
-}
-
-/* The real implementation behind Compatibility_cb (see the naked stub below for
- * why there are two). Runs on whatever thread Lua called Compatibility from.
- *   1. read the script (arg 1) with the game's own reader, copy-safety via
- *      escaping (the nested exec can trigger a Lua GC that moves/frees the
- *      arg's TString, so the arg pointer must not survive the exec)
- *   2. run the pcall wrapper through FUN_00819210(OWNER, OWNER) - the
- *      classifier reads the trusted owner for the duration, so protected
- *      calls inside the script pass; the wrapper's pcall contains errors
- *      so nothing can throw out of the exec
- *   3. push (ok, value, err) and return 3 - a broken script now surfaces
- *      as `local ok, value, err = Compatibility("...")` instead of a silent
- *      no-op, and the script's first return value comes back (secure
- *      functions that return data are readable this way). */
 static int __cdecl Compatibility_body(unsigned int state) __asm__("Compatibility_body") __attribute__((used));
 static int __cdecl Compatibility_body(unsigned int state) {
-    ReadStr_t read_str = (ReadStr_t)READ_STRING_ARG;
-    SecExec_t exec = (SecExec_t)SECURE_EXEC;
-    unsigned int len = 0;
-    const char* script = read_str(state, 1, &len);
-
-    /* ---- "Compatibility_Position <guid_hex>" ---- */
-    {
-        static const char POS_PFX[] = "Compatibility_Position ";
-        if (script && len > sizeof(POS_PFX) - 1 && memcmp(script, POS_PFX, sizeof(POS_PFX) - 1) == 0) {
-            typedef void* (__cdecl *Lookup_t)(unsigned int, unsigned int, unsigned int);
-            typedef void  (__cdecl *PushNum_t)(unsigned int, double);
-            Lookup_t lookup = (Lookup_t)OBJMGR_LOOKUP;
-            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
-            const char* p = script + sizeof(POS_PFX) - 1;
-            const char* e = script + len;
-            unsigned int glo = 0, ghi = 0;
-            void* obj;
-            parse_guid(&p, e, &glo, &ghi);
-            obj = lookup(glo, ghi, 0x08);
-            if (!obj || IsBadReadPtr(obj, 0xDC)) {
-                return 0;
-            }
-            {
-                unsigned long sub = *(unsigned long*)((unsigned char*)obj + 0xD8);
-                if (!sub || IsBadReadPtr((void*)(sub + 0x10), 12)) {
-                    return 0;
-                }
-                {
-                    float* pos = (float*)(sub + 0x10);
-                    pushnum(state, (double)pos[0]);
-                    pushnum(state, (double)pos[1]);
-                    pushnum(state, (double)pos[2]);
-                    return 3;
-                }
-            }
-        }
-    }
-
-    /* ---- "Compatibility_Scale <guid_hex>" ---- */
-    {
-        static const char SCL_PFX[] = "Compatibility_Scale ";
-        if (script && len > sizeof(SCL_PFX) - 1 && memcmp(script, SCL_PFX, sizeof(SCL_PFX) - 1) == 0) {
-            typedef void* (__cdecl *Lookup_t)(unsigned int, unsigned int, unsigned int);
-            typedef void  (__cdecl *PushNum_t)(unsigned int, double);
-            Lookup_t lookup = (Lookup_t)OBJMGR_LOOKUP;
-            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
-            const char* p = script + sizeof(SCL_PFX) - 1;
-            const char* e = script + len;
-            unsigned int glo = 0, ghi = 0;
-            void* obj;
-            float scale = 1.0f;
-            parse_guid(&p, e, &glo, &ghi);
-            obj = lookup(glo, ghi, 0x08);
-            if (!obj || IsBadReadPtr(obj, 0x40)) {
-                pushnum(state, 1.0);
-                return 1;
-            }
-            {
-                unsigned long guid_lo = *(unsigned long*)((unsigned char*)obj + 0x30);
-                unsigned long guid_hi = *(unsigned long*)((unsigned char*)obj + 0x34);
-                int off;
-                for (off = 0; off <= 0x40; off += 4) {
-                    unsigned long ptr = *(unsigned long*)((unsigned char*)obj + off);
-                    if (ptr < 0x10000 || IsBadReadPtr((void*)ptr, 0x14)) continue;
-                    if (*(unsigned long*)ptr == guid_lo && *(unsigned long*)(ptr + 4) == guid_hi) {
-                        if (!IsBadReadPtr((void*)(ptr + 0x10), 4)) {
-                            scale = *(float*)(ptr + 0x10);
-                        }
-                        break;
-                    }
-                }
-            }
-            pushnum(state, (double)scale);
-            return 1;
-        }
-    }
-
-    /* ---- "Compatibility_CTM x y z" (direct CTM call, debug) ---- */
-    {
-        static const char CTM_PFX[] = "Compatibility_CTM ";
-        if (script && len > sizeof(CTM_PFX) - 1 && memcmp(script, CTM_PFX, sizeof(CTM_PFX) - 1) == 0) {
-            typedef void* (__cdecl *GetPlayerObj_t)(void);
-            typedef int (__thiscall *CTM_t)(void*, int, unsigned int*, float*, int);
-            typedef void (__cdecl *PushNum_t)(unsigned int, double);
-            GetPlayerObj_t get_player = (GetPlayerObj_t)GET_PLAYER_OBJ;
-            CTM_t ctm = (CTM_t)CTM_FUNC;
-            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
-            const char* p = script + sizeof(CTM_PFX) - 1;
-            const char* e = script + len;
-            float pos[3];
-            unsigned int guid[2] = {0, 0};
-            void* player;
-            int result, i;
-            for (i = 0; i < 3; i++) pos[i] = parse_float(&p, e);
-            player = get_player();
-            if (!player) { return 0; }
-            result = ctm(player, 1, guid, pos, 0);
-            logmsgf("ctm: ctm(%08lx, 1, (%f,%f,%f)) = %d",
-                    (unsigned long)player, pos[0], pos[1], pos[2], result);
-            pushnum(state, (double)(result ? 1.0 : 0.0));
-            return 1;
-        }
-    }
-
-    /* ---- "Compatibility_PlaceGround tx ty tz" (ground placement via HandleTerrainClick) ---- */
-    {
-        static const char PG_PFX[] = "Compatibility_PlaceGround ";
-        if (script && len > sizeof(PG_PFX) - 1 && memcmp(script, PG_PFX, sizeof(PG_PFX) - 1) == 0) {
-            /* HandleTerrainClick at 0x0080c340 takes a TerrainClickInfo struct:
-             *   unsigned int target_guid_lo, target_guid_hi;
-             *   float x, y, z;
-             * It writes the location into the pending spell struct, clears the
-             * targeting-type flag, and executes once no targeting flags remain. */
-            typedef int (__cdecl *HandleTerrainClick_t)(void*);
-            typedef void (__cdecl *PushNum_t)(unsigned int, double);
-            HandleTerrainClick_t handle_terrain_click = (HandleTerrainClick_t)HANDLE_TERRAIN_CLICK;
-            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
-            const char* p = script + sizeof(PG_PFX) - 1;
-            const char* e = script + len;
-            unsigned int info[5];
-            int result;
-            unsigned long pending = *(unsigned long*)PENDING_SPELL;
-            if (!pending) {
-                logmsg("placeground: no pending spell");
-                pushnum(state, 0.0);
-                return 1;
-            }
-            /* Parse x, y, z */
-            {
-                float x = parse_float(&p, e);
-                float y = parse_float(&p, e);
-                float z = parse_float(&p, e);
-                /* TerrainClickInfo for ground spells:
-                 * {target_guid_lo, target_guid_hi, x, y, z}. */
-                info[0] = 0; /* target GUID lo */
-                info[1] = 0; /* target GUID hi */
-                memcpy(&info[2], &x, sizeof(x));
-                memcpy(&info[3], &y, sizeof(y));
-                memcpy(&info[4], &z, sizeof(z));
-            }
-            {
-                float pos[3];
-                memcpy(pos, &info[2], sizeof(pos));
-                logmsgf("placeground: pos=(%.1f,%.1f,%.1f) pending=%08lx flags=%08x", pos[0], pos[1], pos[2], pending, *(unsigned int*)PENDING_SPELL_FLAGS);
-            }
-            result = handle_terrain_click(info);
-            logmsgf("placeground: HandleTerrainClick returned %d, flags now=%08x", result, *(unsigned int*)PENDING_SPELL_FLAGS);
-            pushnum(state, (double)(result ? 1.0 : 0.0));
-            return 1;
-        }
-    }
-
-    /* ---- "Compatibility_LOS x1 y1 z1 x2 y2 z2 startScale endScale" ---- */
-    {
-        static const char LOS_PFX[] = "Compatibility_LOS ";
-        if (script && len > sizeof(LOS_PFX) - 1 && memcmp(script, LOS_PFX, sizeof(LOS_PFX) - 1) == 0) {
-            typedef char (__cdecl *RawTrace_t)(float*, float*, float*, float*, unsigned int, int);
-            typedef void (__cdecl *PushNum_t)(unsigned int, double);
-            RawTrace_t raw_trace = (RawTrace_t)LOS_TRACE;
-            PushNum_t pushnum = (PushNum_t)LUA_PUSHNUMBER;
-            const char* p = script + sizeof(LOS_PFX) - 1;
-            const char* e = script + len;
-            float start[3], end2[3], hit[3], dist;
-            float start_scale, end_scale;
-            char ret;
-            int i;
-            for (i = 0; i < 3; i++) start[i] = parse_float(&p, e);
-            for (i = 0; i < 3; i++) end2[i] = parse_float(&p, e);
-            start_scale = parse_float(&p, e);
-            end_scale = parse_float(&p, e);
-            start[2] += 2.1f * start_scale;
-            end2[2] += 2.1f * end_scale;
-            hit[0] = hit[1] = hit[2] = 0;
-            dist = 1.0f;
-            ret = raw_trace(start, end2, hit, &dist, 0x1020124, 0);
-            pushnum(state, (double)(ret != 0 ? 1.0 : 0.0));
-            return 1;
-        }
-    }
-
-    /* ---- "Compatibility_Probe <guid_hex> [typemask_hex]" (debug, log-only) ---- */
-    {
-        static const char PRB_PFX[] = "Compatibility_Probe ";
-        if (script && len > sizeof(PRB_PFX) - 1 && memcmp(script, PRB_PFX, sizeof(PRB_PFX) - 1) == 0) {
-            typedef void* (__cdecl *Lookup_t)(unsigned int, unsigned int, unsigned int);
-            Lookup_t lookup = (Lookup_t)OBJMGR_LOOKUP;
-            const char* p = script + sizeof(PRB_PFX) - 1;
-            const char* e = script + len;
-            unsigned int glo, ghi, mask = 0x08;
-            void* obj;
-            if (!parse_guid(&p, e, &glo, &ghi)) { logmsg("probe: no GUID"); return 0; }
-            parse_guid(&p, e, &mask, &mask);
-            logmsgf("probe: lookup(%08x%08x, %08x)", ghi, glo, mask);
-            obj = lookup(glo, ghi, mask);
-            logmsgf("probe: result = %08lx", (unsigned long)obj);
-            if (obj && !IsBadReadPtr(obj, 256)) {
-                unsigned char* b = (unsigned char*)obj;
-                int row;
-                for (row = 0; row < 16; row++) {
-                    char h[128]; int pos = 0, col;
-                    pos += wsprintfA(h + pos, "  +%02x: ", row * 16);
-                    for (col = 0; col < 16; col++) pos += wsprintfA(h + pos, "%02x ", b[row * 16 + col]);
-                    logmsg(h);
-                }
-            }
-            return 0;
-        }
-    }
-
-    if (!script || len == 0) {
-        exec(FAIL_NOSCRIPT, g_owner_name, g_owner_name);
-    } else if (len > MAX_SCRIPT_LEN) {                  /* sanity cap on the escape buffer */
-        exec(FAIL_ALLOC, g_owner_name, g_owner_name);
-    } else {
-        char* esc = escape_literal(script, len);
-        if (!esc) {
-            exec(FAIL_NUL, g_owner_name, g_owner_name);
-        } else {
-            size_t pre = sizeof(WRAP_PRE) - 1;
-            size_t esc_len = strlen(esc);
-            size_t post = sizeof(WRAP_POST) - 1;
-            char* wrap = (char*)HeapAlloc(GetProcessHeap(), 0, pre + esc_len + post + 1);
-            if (!wrap) {
-                exec(FAIL_ALLOC, g_owner_name, g_owner_name);
-            } else {
-                memcpy(wrap, WRAP_PRE, pre);
-                memcpy(wrap + pre, esc, esc_len);
-                memcpy(wrap + pre + esc_len, WRAP_POST, post + 1);
-                exec(wrap, g_owner_name, g_owner_name);
-                HeapFree(GetProcessHeap(), 0, wrap);
-            }
-            HeapFree(GetProcessHeap(), 0, esc);
-        }
-    }
-    return push_result(state);
+    ReadStringArgumentFunction readStringArgument =
+        (ReadStringArgumentFunction)READ_STRING_ARG;
+    unsigned int scriptLength = 0;
+    const char *script = readStringArgument(state, 1, &scriptLength);
+    int commandResult = command_dispatch(
+        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSHNUMBER);
+    if (commandResult >= 0) return commandResult;
+    commandResult = debug_command_dispatch(
+        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSHNUMBER,
+        log_messagef);
+    if (commandResult >= 0) return commandResult;
+    secure_executor_run(script, scriptLength, g_owner_name);
+    return lua_bridge_push_result(state);
 }
 
-/* The REGISTERED callback. The engine reads our code bytes as metadata
- * (see the CALLBACK DESCRIPTOR CONSTRAINT header note), so this is a naked
- * stub that pins the descriptor bytes instead of leaving them to compiler
- * accident: 0x45 NOPs pad entry+0x00..0x44 (entry+0x10 = 0x90909090, the
- * owner dword - as inert as any other code bytes, and never observed by
- * the classifier because Compatibility_body makes no protected calls directly),
- * then `jmp Compatibility_body` at +0x45..0x49, then three dead NOPs, then the
- * dead bytes b3 01 00 at +0x4d..0x4f (min=0xb3, flag=0x01, max=0x00 - the
- * FUN_00855de0 vararg path with no extra frame growth, same as v8). The
- * dead bytes are never executed. The stack is untouched by the stub, so
- * Compatibility_body sees `state` exactly as the engine passed it. */
+/* The game reads the registered callback's code bytes as metadata. The naked
+ * stub pins the required descriptor bytes at callback+0x4d..0x4f. */
 __attribute__((naked)) static int __cdecl Compatibility_cb(unsigned int state) {
     __asm__ __volatile__(
-        ".rept 0x45\n\t.byte 0x90\n\t.endr\n\t"  /* +0x00..0x44: pad */
-        "jmp Compatibility_body\n\t"                     /* +0x45..0x49 */
-        ".byte 0x90,0x90,0x90\n\t"                /* +0x4a..0x4c: dead */
-        ".byte 0xb3,0x01,0x00\n\t"                /* +0x4d..0x4f: min/flag/max (dead) */
+        ".rept 0x45\n\t.byte 0x90\n\t.endr\n\t"
+        "jmp Compatibility_body\n\t"
+        ".byte 0x90,0x90,0x90\n\t"
+        ".byte 0xb3,0x01,0x00\n\t"
     );
 }
 
-/* ---------- registration + self-test ---------- */
+/* ---------- registration ---------- */
 
-/* Runs on the game's window thread (via WM_COMPATIBILITY or the keepalive),
- * when Lua is idle. Registers the global, then runs a SILENT self-test: a pcall
- * of a harmless script through Compatibility, whose (ok, err) result goes only
- * to compatibility.log - no chat output ever (a screenshot/stream must not show
- * the shim). The self-test makes NO protected calls: with a wrong owner the
- * classifier's block popup is exactly what we do not want during the injection;
- * trust status is verified separately via /run Compatibility("print(issecure())"). */
-static int run_registration(void) {
-    Register_t reg = (Register_t)REGISTER_GLOBAL;
-    SecExec_t exec = (SecExec_t)SECURE_EXEC;
-    unsigned long fs;
-    if (!g_ac_singleton) {
-        g_ac_singleton = find_ac_singleton();
-        if (!g_ac_singleton) {
+/* Registration runs on the game window thread, after the lifecycle module posts
+ * its message. A silent self-test confirms that protected-call results replay. */
+static void self_test_registration(void) {
+    unsigned long frameScriptState = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
+    LuaGetFieldFunction getField;
+    LuaToBooleanFunction toBoolean;
+    LuaRawGetIntegerFunction rawGetInteger;
+    LuaRemoveFunction remove;
+    if (!frameScriptState) return;
+
+    getField = (LuaGetFieldFunction)LUA_GETFIELD;
+    toBoolean = (LuaToBooleanFunction)LUA_TOBOOLEAN;
+    rawGetInteger = (LuaRawGetIntegerFunction)LUA_RAWGETI;
+    remove = (LuaRemoveFunction)LUA_REMOVE;
+    getField(frameScriptState, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_TABLE_GLOBAL);
+    rawGetInteger(frameScriptState, -1, 1);
+    log_messagef("compatibility: self-test ok=%d", toBoolean(frameScriptState, -1));
+    remove(frameScriptState, -1);
+    remove(frameScriptState, -1);
+}
+
+static int register_compatibility(void) {
+    RegisterGlobalFunction registerGlobal = (RegisterGlobalFunction)REGISTER_GLOBAL;
+    SecureExecuteFunction secureExecute = (SecureExecuteFunction)SECURE_EXEC;
+    unsigned long frameScriptState;
+
+    if (!g_anticheat_singleton) {
+        g_anticheat_singleton = find_anticheat_singleton();
+        if (!g_anticheat_singleton) {
             if (!g_waiting_logged) {
-                logmsg("compatibility: manifest not populated yet - waiting (retrying every 1s)");
+                log_message("compatibility: manifest not populated yet - waiting (retrying every 1s)");
                 g_waiting_logged = 1;
             }
-            return 0;   /* retry next tick */
-        }
-    }
-    if (!g_owner_name) {
-        g_owner_name = choose_owner();
-        if (!g_owner_name[0]) {
-            logmsg("compatibility: NO trusted owner - refusing to register (addon probe will report)");
             return 0;
         }
     }
-    fs = *(volatile unsigned long*)FS_STATE;
-    if (!fs || IsBadReadPtr((void*)fs, 0x100)) {
-        logmsg("compatibility: FrameScript state invalid - not registering");
+    if (!g_owner_name) {
+        if (!trust_manifest_choose_owner(g_anticheat_singleton, g_owner,
+                                         sizeof(g_owner), log_messagef)) {
+            log_message("compatibility: NO trusted owner - refusing to register (addon probe will report)");
+            return 0;
+        }
+        g_owner_name = g_owner;
+    }
+    frameScriptState = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
+    if (!frameScriptState || IsBadReadPtr((void *)frameScriptState, 0x100)) {
+        log_message("compatibility: FrameScript state invalid - not registering");
         return 0;
     }
-    reg("Compatibility", (void*)Compatibility_cb);
-    g_registered = 1;
-    logmsg("compatibility: Compatibility registered");
-    exec("local function cap(...)return select('#',...),{...}end;local n,t=cap(pcall(Compatibility,'-- self-test'));" RESULT_N_GLOBAL "=n;" RESULT_RES_GLOBAL "=t",
-         g_owner_name, g_owner_name);
-    fs = *(volatile unsigned long*)FS_STATE;
-    if (fs) {
-        GetField_t gf = (GetField_t)LUA_GETFIELD;
-        ToBool_t tb = (ToBool_t)LUA_TOBOOLEAN;
-        RawGeti_t rgi = (RawGeti_t)LUA_RAWGETI;
-        Remove_t rm = (Remove_t)LUA_REMOVE;
-        gf(fs, LUA_GLOBALSINDEX, RESULT_RES_GLOBAL);
-        rgi(fs, -1, 1);         /* Res[1] = pcall ok */
-        logmsgf("compatibility: self-test ok=%d", tb(fs, -1));
-        rm(fs, -1);             /* pop Res[1] */
-        rm(fs, -1);             /* pop Res table */
-    }
-    g_last_fs = *(volatile unsigned long*)FS_STATE;
+    registerGlobal("Compatibility", (void *)Compatibility_cb);
+    g_compatibility_registered = 1;
+    log_message("compatibility: Compatibility registered");
+    secureExecute("local function cap(...)return select('#',...),{...}end;local n,t=cap(pcall(Compatibility,'-- self-test'));"
+                  LUA_RESULT_COUNT_GLOBAL "=n;" LUA_RESULT_TABLE_GLOBAL "=t",
+                  g_owner_name, g_owner_name);
+    self_test_registration();
+    g_last_frame_script_state = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
     return 1;
 }
 
-/* Does the CURRENT Lua state still resolve Compatibility as a function? This is
- * the condition the keepalive actually cares about: /reload rebuilds the
- * state and wipes every global, including Compatibility, and the state pointer
- * alone cannot tell us that (a rebuilt state can land at the same
- * address). One getfield + one type read + one pop per second - nothing. */
-static int compatibility_alive(unsigned int state) {
-    GetField_t gf = (GetField_t)LUA_GETFIELD;
-    Type_t tp = (Type_t)LUA_TYPE;
-    Remove_t rm = (Remove_t)LUA_REMOVE;
-    int t;
-    gf(state, LUA_GLOBALSINDEX, "Compatibility");
-    t = tp(state, -1);
-    rm(state, -1);
-    return t == LUA_TFUNCTION;
+static int is_compatibility_alive(unsigned int state) {
+    LuaGetFieldFunction getField = (LuaGetFieldFunction)LUA_GETFIELD;
+    LuaTypeFunction type = (LuaTypeFunction)LUA_TYPE;
+    LuaRemoveFunction remove = (LuaRemoveFunction)LUA_REMOVE;
+    int valueType;
+    getField(state, LUA_BRIDGE_GLOBALS_INDEX, "Compatibility");
+    valueType = type(state, -1);
+    remove(state, -1);
+    return valueType == LUA_TYPE_FUNCTION;
 }
 
-/* Keepalive, every 1s on the window thread (WM_TIMER). The re-register
- * DECISION is purely resolution-based: Compatibility gone -> re-register (idempotent)
- * + silent self-test. The state pointer is used only as a safety defer -
- * if it changed since the last tick, a reload is in flight and the state
- * must not be touched until it settles (a freed mid-teardown state would
- * crash getfield; a rebuilt state at a fresh address is exactly what the
- * defer handles). No per-tick logging: a quiet tick writes nothing, so the
- * log only ever records real events. */
-static void keepalive_tick(void) {
-    unsigned long fs = *(volatile unsigned long*)FS_STATE;
-    if (!fs) return;                        /* state not up yet */
-    if (fs != g_last_fs) {                  /* reload in flight / just done: settle one tick */
-        g_last_fs = fs;
+/* ---------- window lifecycle ---------- */
+
+static void handle_keepalive_timer(void) {
+    unsigned long frameScriptState = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
+    if (!frameScriptState) return;
+    if (frameScriptState != g_last_frame_script_state) {
+        g_last_frame_script_state = frameScriptState;
         return;
     }
-    if (!g_registered) {                    /* initial registration still pending */
-        run_registration();                /* retry: manifest may not be populated yet */
+    if (!g_compatibility_registered) {
+        register_compatibility();
         return;
     }
-    if (compatibility_alive(fs)) return;           /* still alive: silent tick */
-    logmsg("compatibility: Compatibility global missing - re-registering");
-    run_registration();
+    if (is_compatibility_alive(frameScriptState)) return;
+    log_message("compatibility: Compatibility global missing - re-registering");
+    register_compatibility();
 }
 
-/* The subclassed window proc - the bridge that runs our code on the game's
- * window thread (the main thread; Lua is idle at message boundaries, which
- * is the only safe point to drive the FrameScript machinery). WM_COMPATIBILITY
- * performs the registration (and arms the keepalive only on success);
- * WM_TIMER (our id only) runs the keepalive; everything else passes
- * through to the original proc untouched. The subclass is intentionally
- * never restored - the keepalive needs it for the session. */
-static LRESULT CALLBACK SubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_COMPATIBILITY) {
-        logmsg("subclass: WM_COMPATIBILITY on window thread");
-        if (!g_registered) {
-            run_registration();   /* first attempt; timer retries if login */
-        } else {
-            logmsg("subclass: already registered, skipping");
-        }
-        /* arm the keepalive regardless: it retries registration until the
-         * manifest is populated, then handles /reload recovery. */
-        SetTimer(hwnd, COMPATIBILITY_TIMER_ID, COMPATIBILITY_TIMER_MS, NULL);
-        logmsg("subclass: keepalive timer set (1s)");
-        return 0;
+static void handle_compatibility_message(void) {
+    log_message("subclass: WM_COMPATIBILITY on window thread");
+    if (!g_compatibility_registered) {
+        register_compatibility();
+    } else {
+        log_message("subclass: already registered, skipping");
     }
-    if (msg == WM_TIMER && wParam == COMPATIBILITY_TIMER_ID) {
-        keepalive_tick();
-        return 0;
-    }
-    if (g_oldProc)
-        return CallWindowProcA(g_oldProc, hwnd, msg, wParam, lParam);
-    return DefWindowProcA(hwnd, msg, wParam, lParam);
 }
 
-/* ---------- resize/recreate recovery watchdog ---------- */
-
-/* After a D3D device reset (resize, fullscreen toggle) the client may
- * recreate the window under a fresh HWND, and this client also runs
- * /reload on resize — wiping the Lua state. The SubclassProc (and its
- * WM_TIMER keepalive) are bound to the old HWND, so they die with the
- * reset. A standalone watchdog thread re-finds the window by class and
- * re-subclasses when the HWND changes or the proc was knocked off the
- * chain. It does only Win32 work — no Lua, no FrameScript, because
- * those are only safe on the game's main thread. The keepalive's
- * one-tick fs-change defer handles the /reload recovery as always. */
-
-#define WATCHDOG_MS 500   /* re-subclass latency after a device reset */
-
-static HWND g_hwnd = NULL;   /* the window we currently hold the subclass on */
-
-/* install_subclass: swap in SubclassProc if it is not already installed.
- * Sets g_oldProc before the swap so the chain is valid at the instant it
- * goes live, then posts WM_COMPATIBILITY to re-arm the keepalive timer
- * (and re-register if needed) on the current HWND. */
-static void install_subclass(HWND hwnd) {
-    WNDPROC cur = (WNDPROC)GetWindowLongPtrA(hwnd, GWLP_WNDPROC);
-    if (cur == SubclassProc) return;
-    g_oldProc = cur;
-    SetWindowLongPtrA(hwnd, GWLP_WNDPROC, (LONG_PTR)SubclassProc);
-    PostMessageA(hwnd, WM_COMPATIBILITY, 0, 0);
-    logmsgf("watchdog: subclassed hwnd %08lx (prev proc %08lx)",
-            (unsigned long)hwnd, (unsigned long)cur);
-}
-
-static DWORD WINAPI WatchdogThread(LPVOID param) {
-    (void)param;
-    for (;;) {
-        HWND hwnd = FindWindowA(GAME_WINDOW_CLASS, NULL);
-        if (hwnd) {
-            if (hwnd != g_hwnd) {
-                /* first run, or window recreated after a device reset */
-                g_hwnd = hwnd;
-                install_subclass(hwnd);
-            } else if ((WNDPROC)GetWindowLongPtrA(hwnd, GWLP_WNDPROC) != SubclassProc) {
-                /* same window, but the proc was reset under us */
-                install_subclass(hwnd);
-            }
-        }
-        Sleep(WATCHDOG_MS);
-    }
-    return 0;   /* not reached */
-}
-
-/* Setup thread spawned from DllMain. Finds the game window ONCE (inject after
- * the game is up), VALIDATES the client layout (aborts cleanly on any mismatch -
- * before anything is installed). Then starts the watchdog thread and returns.
- * All subclassing, initial and recovery, belongs to the watchdog. Nothing is
- * installed in SetupThread itself, so fatal_exit remains safe (it is only
- * valid before any subclass is installed). */
-static DWORD WINAPI SetupThread(LPVOID param) {
-    HWND hwnd;
-    HANDLE t;
-    (void)param;
-    logmsg("setup: looking for game window");
-    hwnd = FindWindowA(GAME_WINDOW_CLASS, NULL);
-    if (!hwnd) {
-        fatal_exit("setup: game window not found - unload (inject once the game is up)");
-    }
-    if (!validate_layout()) {
-        fatal_exit("setup: layout mismatch - unloading (re-inject a matching build)");
-    }
-    t = CreateThread(NULL, 0, WatchdogThread, NULL, 0, NULL);
-    if (!t) {
-        fatal_exit("setup: watchdog thread failed to start - unloading");
-    }
-    CloseHandle(t);
-    logmsg("setup: validated; watchdog started");
-    return 0;
+static void start_window_lifecycle(void) {
+    WindowLifecycleCallbacks callbacks;
+    callbacks.validate_layout = validate_layout;
+    callbacks.on_compatibility_message = handle_compatibility_message;
+    callbacks.on_timer = handle_keepalive_timer;
+    callbacks.fatal_exit = fatal_exit;
+    callbacks.log_message = log_messagef;
+    window_lifecycle_start(&callbacks);
 }
 
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     (void)lpvReserved;
     if (fdwReason == DLL_PROCESS_ATTACH) {
-        HANDLE t;
-        g_hModule = hinstDLL;
-        init_logpath(hinstDLL);
+        g_module_handle = hinstDLL;
+        initialize_log_path(hinstDLL);
         DisableThreadLibraryCalls(hinstDLL);
-        logmsg("dllmain: compatibility attached");
-        t = CreateThread(NULL, 0, SetupThread, NULL, 0, NULL);
-        if (t) CloseHandle(t);
+        log_message("dllmain: compatibility attached");
+        start_window_lifecycle();
     }
-    /* DLL_PROCESS_DETACH: nothing to clean up - the subclass and timer die
-     * with the process (the DLL is never unloaded mid-session; see the
-     * CALLBACK DESCRIPTOR CONSTRAINT header note). */
+    /* DLL_PROCESS_DETACH: the subclass and timer die with the process. */
     return TRUE;
 }

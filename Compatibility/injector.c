@@ -40,6 +40,10 @@
 #include "common.h"
 
 #define LOAD_TIMEOUT_MS 30000
+#define INJECTION_PROCESS_ACCESS \
+    (PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | \
+     PROCESS_VM_READ | PROCESS_VM_WRITE)
+
 
 /* Resolve the dll path: compatibility.dll next to this exe. Returns a
  * pointer into `buf` on success, or NULL when the path cannot be
@@ -95,32 +99,42 @@ int main(int argc, char** argv) {
            (unsigned long)winPid, (unsigned long)tid);
 
     /* 2. Open the game process with full access (same-user Wine process). */
-    HANDLE hProc = OpenProcess(PROCESS_ALL_ACCESS, FALSE, winPid);
+    HANDLE hProc = OpenProcess(INJECTION_PROCESS_ACCESS, FALSE, winPid);
     if (!hProc) {
         printf("compatibility: OpenProcess failed: %lu\n", (unsigned long)GetLastError());
         return 1;
     }
 
-    /* 2b. Check if the DLL is already loaded in the game process.
-     * Enumerating the target's module list prevents a double-inject that
-     * would register the global twice and break the descriptor invariant. */
+    /* 2b. Refuse a second copy. A snapshot failure is not evidence that the
+     * DLL is absent, so stop rather than risking duplicate registration. */
     {
-        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, winPid);
-        int already = 0;
-        if (snap != INVALID_HANDLE_VALUE) {
-            MODULEENTRY32 me;
-            me.dwSize = sizeof(me);
-            if (Module32First(snap, &me)) {
-                do {
-                    if (_stricmp(me.szModule, COMPAT_DLL_NAME) == 0) {
-                        already = 1;
-                        break;
-                    }
-                } while (Module32Next(snap, &me));
-            }
-            CloseHandle(snap);
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, winPid);
+        int alreadyLoaded = 0;
+        if (snapshot == INVALID_HANDLE_VALUE) {
+            printf("compatibility: module snapshot failed: %lu\n",
+                   (unsigned long)GetLastError());
+            CloseHandle(hProc);
+            return 1;
         }
-        if (already) {
+        {
+            MODULEENTRY32 moduleEntry;
+            moduleEntry.dwSize = sizeof(moduleEntry);
+            if (!Module32First(snapshot, &moduleEntry)) {
+                printf("compatibility: module enumeration failed: %lu\n",
+                       (unsigned long)GetLastError());
+                CloseHandle(snapshot);
+                CloseHandle(hProc);
+                return 1;
+            }
+            do {
+                if (_stricmp(moduleEntry.szModule, COMPAT_DLL_NAME) == 0) {
+                    alreadyLoaded = 1;
+                    break;
+                }
+            } while (Module32Next(snapshot, &moduleEntry));
+        }
+        CloseHandle(snapshot);
+        if (alreadyLoaded) {
             printf("compatibility: %s is already loaded in pid %lu - refusing to inject again\n",
                    COMPAT_DLL_NAME, (unsigned long)winPid);
             CloseHandle(hProc);
@@ -157,24 +171,37 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    /* 5. Wait for the load (bounded); the thread exit code is the module
-     * handle. On timeout, leave the thread to finish on its own and exit:
-     * the dll self-drives once loaded, and killing a thread inside
-     * LoadLibraryA risks deadlocking the loader lock. */
+    /* 5. Wait for the load. On timeout, LoadLibraryA may still read `mem`;
+     * free only local handles and deliberately retain its remote argument. */
     if (WaitForSingleObject(hThread, LOAD_TIMEOUT_MS) == WAIT_TIMEOUT) {
         printf("compatibility: warning - load thread still running after %dms; leaving it\n",
                LOAD_TIMEOUT_MS);
         CloseHandle(hThread);
-        VirtualFreeEx(hProc, mem, 0, MEM_RELEASE);
         CloseHandle(hProc);
         return 2;
     }
-    DWORD exitCode = 0;
-    GetExitCodeThread(hThread, &exitCode);
-    printf("compatibility: loaded in game (hmod=%p)\n", (void*)exitCode);
+    {
+        DWORD exitCode = 0;
+        if (!GetExitCodeThread(hThread, &exitCode)) {
+            printf("compatibility: GetExitCodeThread failed: %lu\n",
+                   (unsigned long)GetLastError());
+            CloseHandle(hThread);
+            VirtualFreeEx(hProc, mem, 0, MEM_RELEASE);
+            CloseHandle(hProc);
+            return 1;
+        }
+        if (exitCode == 0) {
+            printf("compatibility: LoadLibraryA failed in game process\n");
+            CloseHandle(hThread);
+            VirtualFreeEx(hProc, mem, 0, MEM_RELEASE);
+            CloseHandle(hProc);
+            return 1;
+        }
+        printf("compatibility: loaded in game (hmod=%p)\n", (void*)exitCode);
+    }
 
-    /* 6. Clean up our remote allocations and handles. The dll stays
-     * loaded and self-drives from here. */
+    /* 6. The remote loader completed, so its argument allocation is safe to
+     * release. The DLL stays loaded and self-drives from here. */
     CloseHandle(hThread);
     VirtualFreeEx(hProc, mem, 0, MEM_RELEASE);
     CloseHandle(hProc);

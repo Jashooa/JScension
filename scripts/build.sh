@@ -9,7 +9,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/config.sh"
 
 mkdir -p "$COMPAT_BIN_DIR"
-i686-w64-mingw32-gcc -O2 -shared -o "$COMPAT_BIN_DIR/$COMPAT_DLL_NAME" "$SOLUTION_DIR/Compatibility/shim.c" "$SOLUTION_DIR/Compatibility/compatibility.def" \
+i686-w64-mingw32-gcc -O2 -shared -o "$COMPAT_BIN_DIR/$COMPAT_DLL_NAME" \
+    "$SOLUTION_DIR/Compatibility/shim.c" \
+    "$SOLUTION_DIR/Compatibility/client_layout.c" \
+    "$SOLUTION_DIR/Compatibility/client_api.c" \
+    "$SOLUTION_DIR/Compatibility/lua_bridge.c" \
+    "$SOLUTION_DIR/Compatibility/secure_executor.c" \
+    "$SOLUTION_DIR/Compatibility/trust_manifest.c" \
+    "$SOLUTION_DIR/Compatibility/command_dispatch.c" \
+    "$SOLUTION_DIR/Compatibility/command_parser.c" \
+    "$SOLUTION_DIR/Compatibility/debug_commands.c" \
+    "$SOLUTION_DIR/Compatibility/window_lifecycle.c" \
+    "$SOLUTION_DIR/Compatibility/compatibility.def" \
     -static-libgcc -Wl,--exclude-all-symbols
 i686-w64-mingw32-gcc -O2 -o "$COMPAT_BIN_DIR/$COMPAT_EXE_NAME" "$SOLUTION_DIR/Compatibility/injector.c" -static-libgcc
 
