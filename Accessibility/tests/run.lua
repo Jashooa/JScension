@@ -395,7 +395,7 @@ do
 	eq("Scale command", scripts[1], "Compatibility_Scale 0x2222")
 
 	clearScripts()
-	Compatibility.CastGround("Fireball", "target")
+	Compatibility.ConfirmGround("target")
 	eq("ground position command", scripts[1], "Compatibility_Position 0x2222")
 	eq("ground placement command", scripts[2], "Compatibility_PlaceGround 4.500000 5.750000 6.250000")
 

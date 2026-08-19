@@ -98,11 +98,11 @@ end
 -- secure-function wrappers
 -- ---------------------------------------------------------------------------
 
--- CastGround places a pending ground-target spell at a unit's world
+-- ConfirmGround confirms a pending ground-target spell at a unit's world
 -- position via HandleTerrainClick (0x0080c340). TerrainClickInfo struct:
 -- {target_guid_lo, target_guid_hi, x, y, z}. Flag 0x40 in DAT_00d3f4e0
 -- means ground-targeted spell.
-function Compatibility.CastGround(spell, unit)
+function Compatibility.ConfirmGround(unit)
 	local x, y, z = Compatibility.Position(unit)
 	if not x then return end
 	runCommand("Compatibility_PlaceGround %f %f %f", x, y, z)
@@ -110,7 +110,7 @@ end
 
 -- Cast runs CastSpellByName under the trusted owner. unit is the target
 -- unit token ("player" for self-cast). If the spell opens a ground-
--- targeting cursor, CastGround resolves it at the unit's position.
+-- targeting cursor, ConfirmGround resolves it at the unit's position.
 function Compatibility.Cast(spell, unit)
 	if unit == "player" then
 		return Compatibility.Call('CastSpellByName(%s, "player")', spell)
@@ -118,7 +118,7 @@ function Compatibility.Cast(spell, unit)
 	Compatibility.Call("CastSpellByName(%s)", spell)
 	local isTargeting = Compatibility.Call("return SpellIsTargeting()")
 	if isTargeting then
-		Compatibility.CastGround(spell, unit)
+		Compatibility.ConfirmGround(unit)
 	end
 end
 
