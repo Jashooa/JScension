@@ -225,25 +225,13 @@ function ConditionDefinitions.Build(conditions, dependencies)
 
 	register("unit_aura_present", {
 		label = "Unit has aura",
-		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
-		-- mine defaults to false (checkbox init), op/value are nil for
-		-- presence-only checks (no time comparison)
-		optional = { mine = true, op = true, value = true },
+		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" } },
+		optional = { mine = true },
 		describe = function(condition)
-			local base = ("%s has %s"):format(condition.unit or "?", condition.aura or "?")
-			if condition.value and condition.value ~= "" then
-				base = base .. (" with %s %ss left"):format(condition.op or "?", tostring(condition.value))
-			end
-			return base
+			return ("%s has %s"):format(condition.unit or "?", condition.aura or "?")
 		end,
 		eval = function(condition)
-			-- nil = absent; a number (even 0, a permanent aura) = present. The
-			-- comparison uses the first return of findAura.
-			local remaining = Aura.find(condition.unit, condition.aura, condition.kind, condition.mine)
-			if remaining == nil then return false end
-			local want = tonumber(condition.value)
-			if not want then return true end
-			return Compare.compare(remaining, condition.op, want)
+			return Aura.find(condition.unit, condition.aura, condition.kind, condition.mine) ~= nil
 		end,
 	})
 

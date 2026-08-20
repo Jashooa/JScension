@@ -153,6 +153,22 @@ fake.UnitAffectingCombat = function() return state.inCombat end
 fake.GetUnitSpeed = function(u) local x = state.units[u]; return x and x.speed or 0 end
 fake.IsUsableSpell = function(s) local x = state.spells[s]; if x then return x.usable, x.noMana end end
 fake.GetSpellCooldown = function(s) local x = state.spells[s]; if x then return x.cdStart, x.cdDuration end; return 0, 0 end
+fake.GetSpellCharges = function(id)
+	local x = state.spells[id]
+	if not x then
+		local link = "spell:" .. tostring(id)
+		for _, spell in pairs(state.spells) do
+			if type(spell) == "table" and spell.testLink == link then
+				x = spell
+				break
+			end
+		end
+	end
+	if x and x.maxCharges then
+		return x.currentCharges or 0, x.maxCharges, nil, x.rechargeTime or 0
+	end
+	return 0, 0, nil, 0
+end
 fake.IsSpellInRange = function(s) local x = state.spells[s]; if x then return x.inRange end end
 fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
 -- GetSpellInfo returns (name, rank, icon, powerCost, isFunnel, powerType,
@@ -432,6 +448,14 @@ do
 	eq("Link from name", SpellPicker.Link({ spell = "Fireball" }), "spell:133")
 	eq("Link nil without spell", SpellPicker.Link({}), nil)
 	eq("Link nil with empty name", SpellPicker.Link({ spell = "" }), nil)
+	setSpell("ChargeSpell", { testLink = "spell:123", currentCharges = 1, maxCharges = 2 })
+	ok("hasCharges recognizes charge spell", ns.Spell.hasCharges("ChargeSpell") == true)
+	eq("maxCharges returns charge maximum", ns.Spell.maxCharges("ChargeSpell"), 2)
+	eq("currentCharges returns available charges", ns.Spell.currentCharges("ChargeSpell"), 1)
+	setSpell("Fireball", { testLink = "spell:133", maxCharges = 0, currentCharges = 0 })
+	ok("hasCharges rejects non-charge spell", ns.Spell.hasCharges("Fireball") == false)
+	eq("non-charge maxCharges is zero", ns.Spell.maxCharges("Fireball"), 0)
+	eq("non-charge currentCharges is zero", ns.Spell.currentCharges("Fireball"), 0)
 
 	-- clean up so rotation tests rebuild the spellbook fresh
 	state.knownSpells = {}
@@ -655,6 +679,13 @@ do
 	eq("spell cooldown field order", fieldKeys("spell_cooldown_remaining"), "spell,op,value")
 	eq("player combo field order", fieldKeys("player_combo_points"), "op,value")
 	eq("modifier field order", fieldKeys("modifier_keys"), "key")
+	eq("aura presence field order", fieldKeys("unit_aura_present"), "unit,aura,kind,mine")
+	local presenceClean = Conditions.Sanitize({
+		type = "unit_aura_present", unit = "target", aura = "Moonfire",
+		kind = "debuff", op = ">", value = 3
+	})
+	ok("aura presence drops time comparison fields",
+		presenceClean.op == nil and presenceClean.value == nil)
 	eq("optional power descriptor", Conditions.Fields("unit_power_percent")[2].type, "power")
 	eq("condition field label", Conditions.FieldLabel("target_type"), "target type")
 	ok("unknown condition fields are nil", Conditions.Fields("not_a_condition") == nil)
@@ -824,6 +855,16 @@ end
 resetRotation()
 ok("CastBest casts the passing rule", castOnce("Fireball") == true)
 ok("a cast script was emitted", #scripts >= 1 and scripts[1] == 'CastSpellByName("Fireball")')
+resetRotation()
+setKnown({ "ChargeSpell" })
+setSpell("ChargeSpell", {
+	usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1,
+	testLink = "spell:123", currentCharges = 0, maxCharges = 2
+})
+rules()[1].spell = "ChargeSpell"
+ok("charge spell with no charges is blocked", Rotation.CastBest() == false)
+state.spells.ChargeSpell.currentCharges = 1
+ok("charge spell with charges casts", Rotation.CastBest() == true)
 
 resetRotation()
 state.secure = false

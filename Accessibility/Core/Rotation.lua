@@ -66,6 +66,9 @@ local function evaluateRule(rule, currentTime)
 	local usable, noMana = Spell.usable(rule.spell)
 	if not usable then return false, "not usable" end
 	if noMana then return false, "no mana" end
+	if Spell.hasCharges(rule.spell) and Spell.currentCharges(rule.spell) <= 0 then
+		return false, "no charges"
+	end
 
 	-- gate 5: the spell's own cooldown must be up. The global cooldown is
 	-- handled by the GCD gate, not here.

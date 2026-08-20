@@ -1,7 +1,8 @@
 -- Spell-state helpers. The single owner of the client's spell APIs and
 -- their return orders. No other module calls GetSpellInfo, GetSpellCooldown,
--- IsUsableSpell, or IsSpellInRange directly: they read through these
--- wrappers, so a return-order fact lives in exactly one place.
+-- IsUsableSpell, IsSpellInRange, GetSpellLink, or GetSpellCharges directly:
+-- they read through these wrappers, so a return-order fact lives in exactly
+-- one place.
 --
 -- Return orders (verified against the client's own APIDocumentation):
 --   GetSpellInfo(ref):     name, rank, icon, powerCost, isFunnel, powerType,
@@ -9,10 +10,18 @@
 --   GetSpellCooldown(ref): start, duration, enable
 --   IsUsableSpell(ref):    isUsable, notEnoughMana
 --   IsSpellInRange:        1 in range, 0 out of range, nil unknown
+--   GetSpellCharges(id):   currentCharges, maxCharges, unknown, rechargeTime
 
 local _, ns = ...
 
 local Spell = {}
+
+local function spellID(ref)
+	if type(ref) == "number" then return ref end
+	local link = GetSpellLink(ref)
+	if type(link) ~= "string" then return nil end
+	return tonumber(link:match("spell:(%d+)"))
+end
 
 -- stripRank removes a trailing "(Rank N)" / "(Ranks N-M)" suffix. The client
 -- reports ranked auras and cast-bar names with the suffix; stored spell names
@@ -42,6 +51,30 @@ end
 -- usable returns (isUsable, notEnoughMana).
 function Spell.usable(ref)
 	return IsUsableSpell(ref)
+end
+
+-- hasCharges returns true when a spell uses a charge-based cooldown.
+function Spell.hasCharges(ref)
+	return Spell.maxCharges(ref) > 0
+end
+
+-- maxCharges returns the maximum charges for a spell, or 0 for spells without
+-- charges or references that cannot be resolved to a spell ID.
+function Spell.maxCharges(ref)
+	local id = spellID(ref)
+	if not id then return 0 end
+	local _, maxCharges = GetSpellCharges(id)
+	return maxCharges or 0
+end
+
+-- currentCharges returns the available charges, or 0 for spells without
+-- charges or references that cannot be resolved to a spell ID.
+function Spell.currentCharges(ref)
+	local id = spellID(ref)
+	if not id then return 0 end
+	local currentCharges, maxCharges = GetSpellCharges(id)
+	if not maxCharges or maxCharges == 0 then return 0 end
+	return currentCharges or 0
 end
 
 -- inRange returns true when the spell is in range of the unit, false when
