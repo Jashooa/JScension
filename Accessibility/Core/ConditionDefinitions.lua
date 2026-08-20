@@ -161,32 +161,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	register("player_is_tanking_unit", {
-		label = "Player is tanking unit",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("player is tanking %s"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			return Unit.exists(unit) and Unit.isTanking("player", unit)
-		end,
-	})
 
-	register("player_unit_threat_percent", {
-		label = "Player threat on unit (scaled percentage)",
-		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
-		describe = function(condition)
-			return ("player threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
-		end,
-		eval = function(condition)
-			local unit = condition.unit
-			if not Unit.exists(unit) then return false end
-			local pct = Unit.threatPercent("player", unit)
-			if not pct then return false end
-			return Compare.compare(pct, condition.op, tonumber(condition.value))
-		end,
-	})
 
 	register("unit_health_percent", {
 		label = "Unit health percentage",
@@ -458,6 +433,33 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
+	register("player_is_tanking_unit", {
+		label = "Player is tanking unit",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("player is tanking %s"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			return Unit.exists(unit) and Unit.isTanking("player", unit)
+		end,
+	})
+
+	register("player_unit_threat_percent", {
+		label = "Player threat on unit (scaled percentage)",
+		fields = { { key = "unit", type = "unit" }, { key = "op", type = "op" }, { key = "value", type = "percent" } },
+		describe = function(condition)
+			return ("player threat on %s %s %s%%"):format(condition.unit or "?", condition.op or "?", tostring(condition.value or "?"))
+		end,
+		eval = function(condition)
+			local unit = condition.unit
+			if not Unit.exists(unit) then return false end
+			local pct = Unit.threatPercent("player", unit)
+			if not pct then return false end
+			return Compare.compare(pct, condition.op, tonumber(condition.value))
+		end,
+	})
+
 	register("modifier_keys", {
 		label = "Modifier key held",
 		fields = { { key = "key", type = "modifier" } },
@@ -504,13 +506,14 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	local logicalOrder = {
 		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
-		"unit_moving", "unit_standing_still", "player_is_tanking_unit", "player_unit_threat_percent",
+		"unit_moving", "unit_standing_still",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
 		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
 		"unit_casting", "unit_casting_spell", "unit_cast_interruptible",
 		"unit_spell_range", "unit_range",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",
-		"player_combo_points", "player_shapeshift_form", "modifier_keys", "lua",
+		"player_combo_points", "player_shapeshift_form",
+		"player_is_tanking_unit", "player_unit_threat_percent", "modifier_keys", "lua",
 	}
 	return logicalOrder
 end
