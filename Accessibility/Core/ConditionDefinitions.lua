@@ -498,7 +498,11 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			end
 			if not condition._compiled then return false end
 			local ok, result = pcall(condition._compiled)
-			if not ok then return false end
+			if not ok then
+				condition._error = result or "condition evaluation failed"
+				return false
+			end
+			condition._error = nil
 			return result and true or false
 		end,
 	})

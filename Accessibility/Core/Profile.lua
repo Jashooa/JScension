@@ -27,7 +27,7 @@ function Profile.newRule()
 end
 
 function Profile.newCondition()
-	return { type = "unit_target_type", enabled = true }
+	return { type = "unit_target_type", enabled = true, negated = false }
 end
 
 -- ---------------------------------------------------------------------------
@@ -395,13 +395,19 @@ function Profile.setConditionEnabled(condition, enabled)
 	condition.enabled = asBool(enabled, true)
 end
 
+function Profile.setConditionNegated(condition, negated)
+	condition.negated = asBool(negated, false)
+end
+
 function Profile.setConditionType(condition, conditionType)
 	if type(condition) ~= "table" or not ns.Conditions then return false end
 	local enabled = asBool(condition.enabled, true)
+	local negated = asBool(condition.negated, false)
 	condition.type = asString(conditionType, condition.type)
 	local clean = ns.Conditions.Sanitize(condition)
 	if not clean then return false end
 	clean.enabled = enabled
+	clean.negated = negated
 	for key in pairs(condition) do condition[key] = nil end
 	for key, value in pairs(clean) do condition[key] = value end
 	return true

@@ -579,6 +579,22 @@ do
 
 	-- describe returns a string for a known type
 	ok("Describe returns a string", type(Conditions.Describe({ type = "unit_in_combat", unit = "player" })) == "string")
+	setUnit("target", { exists = true, dead = false, health = 30, maxHealth = 100, hostile = true })
+	ok("negated passing condition fails", Conditions.Eval({
+		type = "unit_health_percent", unit = "target", op = "<", value = 50, negated = true
+	}) == false)
+	ok("negated failing condition passes", Conditions.Eval({
+		type = "unit_health_percent", unit = "target", op = ">", value = 50, negated = true
+	}) == true)
+	ok("incomplete negated condition still fails", Conditions.Eval({
+		type = "unit_health_percent", unit = "target", negated = true
+	}) == false)
+	ok("negated evaluator error fails closed", Conditions.Eval({
+		type = "lua", code = "error('broken')", negated = true
+	}) == false)
+	eq("negated description is explicit",
+		Conditions.Describe({ type = "unit_health_percent", unit = "target", op = "<", value = 50, negated = true }),
+		"not target health < 50%")
 
 	-- the "Aura is not up" condition was renamed to "Aura missing", then
 	-- the unit_ prefix scheme renamed the key; the label names the subject
@@ -590,6 +606,10 @@ do
 	ok("Sanitize drops unknown fields", clean ~= nil and clean.junk == nil)
 	local disabledClean = Conditions.Sanitize({ type = "unit_in_combat", unit = "player", enabled = false })
 	eq("Sanitize preserves condition enabled", disabledClean.enabled, false)
+	local negatedClean = Conditions.Sanitize({ type = "unit_in_combat", unit = "player", negated = true })
+	eq("Sanitize preserves condition negated", negatedClean.negated, true)
+	local invalidNegated = Conditions.Sanitize({ type = "unit_in_combat", unit = "player", negated = "yes" })
+	eq("Sanitize defaults invalid negated", invalidNegated.negated, false)
 	ok("Sanitize drops unknown type", Conditions.Sanitize({ type = "nope" }) == nil)
 
 	-- legacy type keys from before the rename migrate on sanitize
@@ -1094,6 +1114,7 @@ do
 	eq("newRule default enabled", rule.enabled, true)
 	eq("newCondition default type", condition.type, "unit_target_type")
 	eq("newCondition default enabled", condition.enabled, true)
+	eq("newCondition default negated", condition.negated, false)
 
 	Profile.setRuleEnabled(rule, false)
 	Profile.setRuleName(rule, "Primary")
@@ -1106,8 +1127,11 @@ do
 
 	Profile.setConditionField(condition, "unit", "target")
 	Profile.setConditionField(condition, "value", "enemy")
+	Profile.setConditionNegated(condition, true)
 	Profile.setConditionType(condition, "unit_health_percent")
-	ok("condition type setter drops stale fields", condition.type == "unit_health_percent" and condition.value == nil and condition.unit == "target")
+	ok("condition type setter drops stale fields and preserves negation",
+		condition.type == "unit_health_percent" and condition.value == nil and
+		condition.unit == "target" and condition.negated == true)
 	Profile.setConditionEnabled(condition, false)
 	eq("condition enabled setter persists", condition.enabled, false)
 

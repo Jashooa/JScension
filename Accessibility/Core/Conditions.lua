@@ -123,10 +123,13 @@ function Conditions.Eval(condition)
 	-- disabled conditions are skipped
 	if condition.enabled == false then return false end
 	local def = Registry[resolveConditionType(condition)]
+	if type(def) ~= "table" or type(def.eval) ~= "function" then return false end
 	if not Conditions.IsComplete(condition) then return false end
 	local ok, result = pcall(def.eval, condition)
-	if not ok then return false end
-	return result and true or false
+	if not ok or condition._error then return false end
+	result = result and true or false
+	if condition.negated == true then return not result end
+	return result
 end
 
 -- Describe renders one condition as one line. It never errors.
@@ -136,6 +139,7 @@ function Conditions.Describe(condition)
 	if type(def) ~= "table" or type(def.describe) ~= "function" then return "(bad condition)" end
 	local ok, text = pcall(def.describe, condition)
 	if not ok or type(text) ~= "string" then return "(bad condition)" end
+	if condition.negated == true then return "not " .. text end
 	return text
 end
 
@@ -150,8 +154,8 @@ function Conditions.TypeList()
 end
 
 -- Sanitize repairs one condition. It returns a clean table with only the
--- fields its type declares plus its common enabled flag, or nil when the
--- type is not known.
+-- fields its type declares plus its common enabled and negated flags, or nil
+-- when the type is not known.
 function Conditions.Sanitize(condition)
 	if type(condition) ~= "table" then return nil end
 	local conditionType = condition.type
@@ -164,6 +168,7 @@ function Conditions.Sanitize(condition)
 
 	local clean = { type = condition.type }
 	if type(condition.enabled) == "boolean" then clean.enabled = condition.enabled end
+	clean.negated = condition.negated == true
 	for i = 1, #def.fields do
 		local field = def.fields[i]
 		local raw = condition[field.key]
