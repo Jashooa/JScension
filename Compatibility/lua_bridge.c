@@ -33,28 +33,28 @@ char *lua_bridge_escape_literal(const char *script, size_t length) {
     return escaped;
 }
 
-typedef void (__cdecl *LuaGetFieldFunction)(unsigned int, int, const char *);
+typedef void (__cdecl *LuaFindTableFunction)(unsigned int, int, const char *);
 typedef double (__cdecl *LuaToNumberFunction)(unsigned int, int);
 typedef void (__cdecl *LuaRawGetIntegerFunction)(unsigned int, int, int);
 typedef int (__cdecl *LuaGetTopFunction)(unsigned int);
 typedef void (__cdecl *LuaRemoveFunction)(unsigned int, int);
 
 int lua_bridge_push_result(unsigned int state) {
-    LuaGetFieldFunction getField = (LuaGetFieldFunction)LUA_GETFIELD;
-    LuaToNumberFunction toNumber = (LuaToNumberFunction)LUA_TONUMBER;
-    LuaRawGetIntegerFunction rawGetInteger = (LuaRawGetIntegerFunction)LUA_RAWGETI;
-    LuaGetTopFunction getTop = (LuaGetTopFunction)LUA_GETTOP;
-    LuaRemoveFunction remove = (LuaRemoveFunction)LUA_REMOVE;
+    LuaFindTableFunction findTable = (LuaFindTableFunction)LUA_FIND_TABLE;
+    LuaToNumberFunction readNumber = (LuaToNumberFunction)LUA_TO_NUMBER;
+    LuaRawGetIntegerFunction readRawInteger = (LuaRawGetIntegerFunction)LUA_RAW_GET_INTEGER;
+    LuaGetTopFunction readStackTop = (LuaGetTopFunction)LUA_GET_TOP;
+    LuaRemoveFunction removeStackValue = (LuaRemoveFunction)LUA_REMOVE;
     int count;
     int tableIndex;
     int index;
 
-    getField(state, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_COUNT_GLOBAL);
-    count = (int)toNumber(state, -1);
-    remove(state, -1);
-    getField(state, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_TABLE_GLOBAL);
-    tableIndex = getTop(state);
-    for (index = 1; index <= count; index++) rawGetInteger(state, tableIndex, index);
-    remove(state, tableIndex);
+    findTable(state, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_COUNT_GLOBAL);
+    count = (int)readNumber(state, -1);
+    removeStackValue(state, -1);
+    findTable(state, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_TABLE_GLOBAL);
+    tableIndex = readStackTop(state);
+    for (index = 1; index <= count; index++) readRawInteger(state, tableIndex, index);
+    removeStackValue(state, tableIndex);
     return count;
 }

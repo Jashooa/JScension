@@ -30,9 +30,9 @@ static int dispatch_click_to_move(unsigned int state, const char *script, size_t
         if (!command_input_parse_float(&input, &position[coordinateIndex])) return 0;
     }
     if (!command_input_finished(&input)) return 0;
-    player = ((GetPlayerObjectFunction)ACTIVE_PLAYER_OBJECT)();
+    player = ((GetPlayerObjectFunction)CLNT_OBJ_MGR_GET_ACTIVE_PLAYER_OBJ)();
     if (!player) return 0;
-    result = ((ClickToMoveFunction)CLICK_TO_MOVE)(player, 1, &targetGuid, position, 0);
+    result = ((ClickToMoveFunction)CGPLAYER_C__CLICK_TO_MOVE)(player, 1, &targetGuid, position, 0);
     logMessage("ctm: ctm(%08lx, 1, (%f,%f,%f)) = %d",
                (unsigned long)player, position[0], position[1], position[2], result);
     pushNumber(state, result ? 1.0 : 0.0);
@@ -60,7 +60,7 @@ static int dispatch_object_probe(const char *script, size_t length,
         typeMask = maskGuid.low;
     }
     logMessage("probe: lookup(%08x%08x, %08x)", guid.high, guid.low, typeMask);
-    object = ((ObjectManagerLookupFunction)OBJECT_MANAGER_LOOKUP)(guid.low, guid.high, typeMask);
+    object = ((ObjectManagerLookupFunction)CLNT_OBJ_MGR_OBJECT_PTR)(guid.low, guid.high, typeMask);
     logMessage("probe: result = %08lx", (unsigned long)object);
     if (object && !IsBadReadPtr(object, PROBE_READ_LENGTH)) {
         unsigned char *bytes = (unsigned char *)object;

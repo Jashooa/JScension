@@ -30,14 +30,21 @@ static const unsigned char handleTerrainClickBytes[SNAPSHOT_LENGTH] = {0x55,0x8b
 static const unsigned char secureExecuteBytes[SNAPSHOT_LENGTH] = {0x55,0x8b,0xec,0x51,0x83,0x05,0xa0,0x13,0xd4,0x00,0x01,0xa1,0x9c,0x13,0xd4,0x00};
 
 static const ClientCodeTarget clientCodeTargets[] = {
-    { REGISTER_GLOBAL, registerGlobalBytes, "REGISTER_GLOBAL" }, { READ_STRING_ARG, readStringArgumentBytes, "READ_STRING_ARG" },
-    { LUA_GETFIELD, luaGetFieldBytes, "LUA_GETFIELD" }, { LUA_TYPE, luaTypeBytes, "LUA_TYPE" },
-    { LUA_REMOVE, luaRemoveBytes, "LUA_REMOVE" }, { LUA_TOBOOLEAN, luaToBooleanBytes, "LUA_TOBOOLEAN" },
-    { LUA_TONUMBER, luaToNumberBytes, "LUA_TONUMBER" }, { LUA_GETTOP, luaGetTopBytes, "LUA_GETTOP" },
-    { LUA_RAWGETI, luaRawGetIntegerBytes, "LUA_RAWGETI" }, { LUA_PUSHNUMBER, luaPushNumberBytes, "LUA_PUSHNUMBER" },
-    { OBJECT_MANAGER_LOOKUP, objectManagerLookupBytes, "OBJECT_MANAGER_LOOKUP" }, { LINE_OF_SIGHT_TRACE, lineOfSightTraceBytes, "LINE_OF_SIGHT_TRACE" },
-    { CLICK_TO_MOVE, clickToMoveBytes, "CLICK_TO_MOVE" }, { ACTIVE_PLAYER_OBJECT, activePlayerObjectBytes, "ACTIVE_PLAYER_OBJECT" },
-    { HANDLE_TERRAIN_CLICK, handleTerrainClickBytes, "HANDLE_TERRAIN_CLICK" },
+    { LUA_REGISTER_FUNCTION, registerGlobalBytes, "LUA_REGISTER_FUNCTION" },
+    { LUA_TO_LSTRING, readStringArgumentBytes, "LUA_TO_LSTRING" },
+    { LUA_FIND_TABLE, luaGetFieldBytes, "LUA_FIND_TABLE" },
+    { LUA_TYPE, luaTypeBytes, "LUA_TYPE" },
+    { LUA_REMOVE, luaRemoveBytes, "LUA_REMOVE" },
+    { LUA_TO_BOOLEAN, luaToBooleanBytes, "LUA_TO_BOOLEAN" },
+    { LUA_TO_NUMBER, luaToNumberBytes, "LUA_TO_NUMBER" },
+    { LUA_GET_TOP, luaGetTopBytes, "LUA_GET_TOP" },
+    { LUA_RAW_GET_INTEGER, luaRawGetIntegerBytes, "LUA_RAW_GET_INTEGER" },
+    { LUA_PUSH_NUMBER, luaPushNumberBytes, "LUA_PUSH_NUMBER" },
+    { CLNT_OBJ_MGR_OBJECT_PTR, objectManagerLookupBytes, "CLNT_OBJ_MGR_OBJECT_PTR" },
+    { CLNT_OBJ_MGR_GET_ACTIVE_PLAYER_OBJ, activePlayerObjectBytes, "CLNT_OBJ_MGR_GET_ACTIVE_PLAYER_OBJ" },
+    { CGPLAYER_C__CLICK_TO_MOVE, clickToMoveBytes, "CGPLAYER_C__CLICK_TO_MOVE" },
+    { TRACE_LINE, lineOfSightTraceBytes, "TRACE_LINE" },
+    { SPELL_C__HANDLE_TERRAIN_CLICK, handleTerrainClickBytes, "SPELL_C__HANDLE_TERRAIN_CLICK" },
 };
 
 int client_layout_validate(void (*log_message)(const char *format, ...)) {
@@ -50,11 +57,11 @@ int client_layout_validate(void (*log_message)(const char *format, ...)) {
         memcpy(liveBytes, (const void *)target->address, SNAPSHOT_LENGTH);
         if (memcmp(liveBytes, target->expectedBytes, SNAPSHOT_LENGTH) != 0) { log_message("layout: %s mismatch", target->name); valid = 0; }
     }
-    if (IsBadReadPtr((const void *)SECURE_EXEC, SNAPSHOT_LENGTH)) { log_message("layout: SECURE_EXEC unreadable"); return 0; }
-    memcpy(liveBytes, (const void *)SECURE_EXEC, SNAPSHOT_LENGTH);
+    if (IsBadReadPtr((const void *)LUA_EXECUTE, SNAPSHOT_LENGTH)) { log_message("layout: LUA_EXECUTE unreadable"); return 0; }
+    memcpy(liveBytes, (const void *)LUA_EXECUTE, SNAPSHOT_LENGTH);
     if (liveBytes[0] == 0xe9) {
-        uintptr_t hookTarget = SECURE_EXEC + 5 + (intptr_t)*(const int32_t *)(liveBytes + 1);
-        if (hookTarget < EXTENSIONS_BASE || hookTarget > EXTENSIONS_END) { log_message("layout: SECURE_EXEC hook target out of Extensions range"); valid = 0; }
-    } else if (memcmp(liveBytes, secureExecuteBytes, SNAPSHOT_LENGTH) != 0) { log_message("layout: SECURE_EXEC mismatch"); valid = 0; }
+        uintptr_t hookTarget = LUA_EXECUTE + 5 + (intptr_t)*(const int32_t *)(liveBytes + 1);
+        if (hookTarget < EXTENSIONS_BASE || hookTarget > EXTENSIONS_END) { log_message("layout: LUA_EXECUTE hook target out of Extensions range"); valid = 0; }
+    } else if (memcmp(liveBytes, secureExecuteBytes, SNAPSHOT_LENGTH) != 0) { log_message("layout: LUA_EXECUTE mismatch"); valid = 0; }
     return valid;
 }

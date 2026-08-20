@@ -11,12 +11,12 @@
 #define EYE_HEIGHT_PER_SCALE 2.1f
 
 typedef void *(__cdecl *ObjectManagerLookupFunction)(uint32_t low, uint32_t high, uint32_t typeMask);
-typedef char (__cdecl *LineOfSightTraceFunction)(float *start, float *end, float *hit, float *distance, uint32_t flags, int unknown);
+typedef char (__cdecl *TraceLineFunction)(float *start, float *end, float *traceHitCoordinates, float *traceDistance, uint32_t flags, int unknown);
 typedef int (__cdecl *HandleTerrainClickFunction)(void *terrainClick);
 
 int client_find_object(ClientObjectGuid guid, uint32_t typeMask, void **object) {
-    ObjectManagerLookupFunction lookup = (ObjectManagerLookupFunction)OBJECT_MANAGER_LOOKUP;
-    *object = lookup(guid.low, guid.high, typeMask);
+    ObjectManagerLookupFunction objectManagerLookup = (ObjectManagerLookupFunction)CLNT_OBJ_MGR_OBJECT_PTR;
+    *object = objectManagerLookup(guid.low, guid.high, typeMask);
     return *object != NULL;
 }
 
@@ -53,16 +53,16 @@ int client_read_object_scale(void *object, float *scale) {
 
 int client_trace_line_of_sight(ClientWorldPosition start, ClientWorldPosition end,
                                float startScale, float endScale) {
-    LineOfSightTraceFunction trace = (LineOfSightTraceFunction)LINE_OF_SIGHT_TRACE;
+    TraceLineFunction traceLine = (TraceLineFunction)TRACE_LINE;
     float startCoordinates[3] = { start.x, start.y, start.z + EYE_HEIGHT_PER_SCALE * startScale };
     float endCoordinates[3] = { end.x, end.y, end.z + EYE_HEIGHT_PER_SCALE * endScale };
-    float hit[3] = { 0.0f, 0.0f, 0.0f };
-    float distance = 1.0f;
-    return trace(startCoordinates, endCoordinates, hit, &distance, LINE_OF_SIGHT_FLAGS, 0) != 0;
+    float traceHitCoordinates[3] = { 0.0f, 0.0f, 0.0f };
+    float traceDistance = 1.0f;
+    return traceLine(startCoordinates, endCoordinates, traceHitCoordinates, &traceDistance, LINE_OF_SIGHT_FLAGS, 0) != 0;
 }
 
 int client_handle_terrain_click(const ClientTerrainClick *terrainClick) {
-    HandleTerrainClickFunction handleTerrainClick = (HandleTerrainClickFunction)HANDLE_TERRAIN_CLICK;
+    HandleTerrainClickFunction handleTerrainClick = (HandleTerrainClickFunction)SPELL_C__HANDLE_TERRAIN_CLICK;
     if (!*(volatile uintptr_t *)PENDING_SPELL) return 0;
     return handleTerrainClick((void *)terrainClick);
 }

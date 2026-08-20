@@ -52,14 +52,14 @@
 #define MANIFEST_TRUSTED_FLAG_OFFSET 0x18
 #define MAX_MANIFEST_ENTRIES         400
 
-typedef void (__cdecl *RegisterGlobalFunction)(const char *name, void *callback);
-typedef const char *(__cdecl *ReadStringArgumentFunction)(unsigned int state, int index,
-                                                          unsigned int *length);
-typedef void (__cdecl *SecureExecuteFunction)(const char *script,
-                                              const char *ownerName,
-                                              const char *callerName);
-typedef void (__cdecl *LuaGetFieldFunction)(unsigned int state, int index,
-                                            const char *name);
+typedef void (__cdecl *LuaRegisterFunction)(const char *name, void *callback);
+typedef const char *(__cdecl *LuaToLStringFunction)(unsigned int state, int index,
+                                                    unsigned int *length);
+typedef void (__cdecl *LuaExecuteFunction)(const char *script,
+                                           const char *ownerName,
+                                           const char *callerName);
+typedef void (__cdecl *LuaFindTableFunction)(unsigned int state, int index,
+                                             const char *name);
 typedef int (__cdecl *LuaTypeFunction)(unsigned int state, int index);
 typedef void (__cdecl *LuaRemoveFunction)(unsigned int state, int index);
 typedef int (__cdecl *LuaToBooleanFunction)(unsigned int state, int index);
@@ -68,7 +68,7 @@ typedef void (__cdecl *LuaRawGetIntegerFunction)(unsigned int state, int index, 
 /* Registration state belongs to the game-thread callbacks; window mechanics
  * live in window_lifecycle.c. */
 static int g_compatibility_registered = 0;
-static unsigned long g_last_frame_script_state = 0;
+static unsigned long g_last_lua_state = 0;
 static char g_owner[MAX_TRUSTED_NAME_LENGTH + 1];
 static const char *g_owner_name = NULL;
 static HMODULE g_module_handle = NULL;
@@ -136,7 +136,7 @@ static void log_messagef(const char *format, ...) {
     }
     totalLength += snprintf(buffer + totalLength, sizeof(buffer) - (size_t)totalLength,
                             " (fs=%08lx)\r\n",
-                            *(volatile unsigned long *)FRAME_SCRIPT_STATE);
+                            *(volatile unsigned long *)LUA_STATE);
     if (totalLength > 0 && totalLength < (int)sizeof(buffer)) {
         write_log(buffer, totalLength);
     }
@@ -267,15 +267,14 @@ static int validate_layout(void) {
 
 static int __cdecl Compatibility_body(unsigned int state) __asm__("Compatibility_body") __attribute__((used));
 static int __cdecl Compatibility_body(unsigned int state) {
-    ReadStringArgumentFunction readStringArgument =
-        (ReadStringArgumentFunction)READ_STRING_ARG;
+    LuaToLStringFunction readLuaString = (LuaToLStringFunction)LUA_TO_LSTRING;
     unsigned int scriptLength = 0;
-    const char *script = readStringArgument(state, 1, &scriptLength);
+    const char *script = readLuaString(state, 1, &scriptLength);
     int commandResult = command_dispatch(
-        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSHNUMBER);
+        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSH_NUMBER);
     if (commandResult >= 0) return commandResult;
     commandResult = debug_command_dispatch(
-        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSHNUMBER,
+        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSH_NUMBER,
         log_messagef);
     if (commandResult >= 0) return commandResult;
     secure_executor_run(script, scriptLength, g_owner_name);
@@ -298,28 +297,28 @@ __attribute__((naked)) static int __cdecl Compatibility_cb(unsigned int state) {
 /* Registration runs on the game window thread, after the lifecycle module posts
  * its message. A silent self-test confirms that protected-call results replay. */
 static void self_test_registration(void) {
-    unsigned long frameScriptState = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
-    LuaGetFieldFunction getField;
-    LuaToBooleanFunction toBoolean;
-    LuaRawGetIntegerFunction rawGetInteger;
-    LuaRemoveFunction remove;
-    if (!frameScriptState) return;
+    unsigned long luaState = *(volatile unsigned long *)LUA_STATE;
+    LuaFindTableFunction findTable;
+    LuaToBooleanFunction readBoolean;
+    LuaRawGetIntegerFunction readRawInteger;
+    LuaRemoveFunction removeStackValue;
+    if (!luaState) return;
 
-    getField = (LuaGetFieldFunction)LUA_GETFIELD;
-    toBoolean = (LuaToBooleanFunction)LUA_TOBOOLEAN;
-    rawGetInteger = (LuaRawGetIntegerFunction)LUA_RAWGETI;
-    remove = (LuaRemoveFunction)LUA_REMOVE;
-    getField(frameScriptState, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_TABLE_GLOBAL);
-    rawGetInteger(frameScriptState, -1, 1);
-    log_messagef("compatibility: self-test ok=%d", toBoolean(frameScriptState, -1));
-    remove(frameScriptState, -1);
-    remove(frameScriptState, -1);
+    findTable = (LuaFindTableFunction)LUA_FIND_TABLE;
+    readBoolean = (LuaToBooleanFunction)LUA_TO_BOOLEAN;
+    readRawInteger = (LuaRawGetIntegerFunction)LUA_RAW_GET_INTEGER;
+    removeStackValue = (LuaRemoveFunction)LUA_REMOVE;
+    findTable(luaState, LUA_BRIDGE_GLOBALS_INDEX, LUA_RESULT_TABLE_GLOBAL);
+    readRawInteger(luaState, -1, 1);
+    log_messagef("compatibility: self-test ok=%d", readBoolean(luaState, -1));
+    removeStackValue(luaState, -1);
+    removeStackValue(luaState, -1);
 }
 
 static int register_compatibility(void) {
-    RegisterGlobalFunction registerGlobal = (RegisterGlobalFunction)REGISTER_GLOBAL;
-    SecureExecuteFunction secureExecute = (SecureExecuteFunction)SECURE_EXEC;
-    unsigned long frameScriptState;
+    LuaRegisterFunction registerLuaGlobal = (LuaRegisterFunction)LUA_REGISTER_FUNCTION;
+    LuaExecuteFunction executeLuaScript = (LuaExecuteFunction)LUA_EXECUTE;
+    unsigned long luaState;
 
     if (!g_anticheat_singleton) {
         g_anticheat_singleton = find_anticheat_singleton();
@@ -339,47 +338,47 @@ static int register_compatibility(void) {
         }
         g_owner_name = g_owner;
     }
-    frameScriptState = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
-    if (!frameScriptState || IsBadReadPtr((void *)frameScriptState, 0x100)) {
-        log_message("compatibility: FrameScript state invalid - not registering");
+    luaState = *(volatile unsigned long *)LUA_STATE;
+    if (!luaState || IsBadReadPtr((void *)luaState, 0x100)) {
+        log_message("compatibility: Lua state invalid - not registering");
         return 0;
     }
-    registerGlobal("Compatibility", (void *)Compatibility_cb);
+    registerLuaGlobal("Compatibility", (void *)Compatibility_cb);
     g_compatibility_registered = 1;
     log_message("compatibility: Compatibility registered");
-    secureExecute("local function cap(...)return select('#',...),{...}end;local n,t=cap(pcall(Compatibility,'-- self-test'));"
-                  LUA_RESULT_COUNT_GLOBAL "=n;" LUA_RESULT_TABLE_GLOBAL "=t",
-                  g_owner_name, g_owner_name);
+    executeLuaScript("local function cap(...)return select('#',...),{...}end;local n,t=cap(pcall(Compatibility,'-- self-test'));"
+                     LUA_RESULT_COUNT_GLOBAL "=n;" LUA_RESULT_TABLE_GLOBAL "=t",
+                     g_owner_name, g_owner_name);
     self_test_registration();
-    g_last_frame_script_state = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
+    g_last_lua_state = *(volatile unsigned long *)LUA_STATE;
     return 1;
 }
 
 static int is_compatibility_alive(unsigned int state) {
-    LuaGetFieldFunction getField = (LuaGetFieldFunction)LUA_GETFIELD;
-    LuaTypeFunction type = (LuaTypeFunction)LUA_TYPE;
-    LuaRemoveFunction remove = (LuaRemoveFunction)LUA_REMOVE;
+    LuaFindTableFunction findTable = (LuaFindTableFunction)LUA_FIND_TABLE;
+    LuaTypeFunction readType = (LuaTypeFunction)LUA_TYPE;
+    LuaRemoveFunction removeStackValue = (LuaRemoveFunction)LUA_REMOVE;
     int valueType;
-    getField(state, LUA_BRIDGE_GLOBALS_INDEX, "Compatibility");
-    valueType = type(state, -1);
-    remove(state, -1);
+    findTable(state, LUA_BRIDGE_GLOBALS_INDEX, "Compatibility");
+    valueType = readType(state, -1);
+    removeStackValue(state, -1);
     return valueType == LUA_TYPE_FUNCTION;
 }
 
 /* ---------- window lifecycle ---------- */
 
 static void handle_keepalive_timer(void) {
-    unsigned long frameScriptState = *(volatile unsigned long *)FRAME_SCRIPT_STATE;
-    if (!frameScriptState) return;
-    if (frameScriptState != g_last_frame_script_state) {
-        g_last_frame_script_state = frameScriptState;
+    unsigned long luaState = *(volatile unsigned long *)LUA_STATE;
+    if (!luaState) return;
+    if (luaState != g_last_lua_state) {
+        g_last_lua_state = luaState;
         return;
     }
     if (!g_compatibility_registered) {
         register_compatibility();
         return;
     }
-    if (is_compatibility_alive(frameScriptState)) return;
+    if (is_compatibility_alive(luaState)) return;
     log_message("compatibility: Compatibility global missing - re-registering");
     register_compatibility();
 }
