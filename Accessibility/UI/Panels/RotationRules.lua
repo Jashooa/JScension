@@ -186,6 +186,7 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 		Profile.setConditionEnabled(condition, value)
 		updateCardState()
 	end)
+	container:AddChild(enabled)
 
 	local negate = AceGUI:Create("CheckBox")
 	negate:SetLabel("Negate")
@@ -206,6 +207,7 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 		updateCardState()
 		OptionPanel.Refresh(panel)
 	end)
+	container:AddChild(typeDropdown)
 
 	local fields = Conditions.Fields(condition.type)
 	if fields then
