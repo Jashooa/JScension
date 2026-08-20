@@ -78,11 +78,15 @@ function Spell.currentCharges(ref)
 end
 
 -- inRange returns true when the spell is in range of the unit, false when
--- out of range, and nil for ground-targeted spells (no unit-based range).
+-- out of range, and nil when the client cannot resolve the unit distance.
+-- Some spells return nil from IsSpellInRange on this client, so their
+-- configured minimum and maximum ranges provide the fallback.
 function Spell.inRange(ref, unit)
-	local r = IsSpellInRange(ref, unit)
-	if r == nil then return nil end
-	return r == 1
+	local result = IsSpellInRange(ref, unit)
+	if result ~= nil then return result == 1 end
+	local distance = ns.Unit.distance("player", unit)
+	if not distance then return nil end
+	return distance >= Spell.minRange(ref) and distance <= Spell.maxRange(ref)
 end
 
 -- maxRange returns the maximum range of a spell in yards, or 0 for melee/self spells.

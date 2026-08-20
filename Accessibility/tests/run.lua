@@ -178,8 +178,10 @@ fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
 fake.GetSpellInfo = function(id)
 	local x = type(id) == "string" and state.spells[id] or nil
 	local castMs = x and x.castMs or 0
-	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs end
-	return "spell", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs
+	local minRange = x and x.minRange or 0
+	local maxRange = x and x.maxRange or 0
+	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs, minRange, maxRange end
+	return "spell", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs, minRange, maxRange
 end
 -- GetSpellLink returns a hyperlink for a name or ID. The spell table may
 -- set testLink to simulate a resolved link; unknown spells return nil.
@@ -302,6 +304,7 @@ loadModule(ROOT .. "Core/Config.lua", ns)
 local Compatibility = ns.Compatibility
 local Profile = ns.Profile
 local SpellPicker = ns.SpellPicker
+local Spell = ns.Spell
 local Conditions = ns.Conditions
 local Rotation = ns.Rotation
 local Config = ns.Config
@@ -445,6 +448,15 @@ do
 
 	-- Link resolution: a name resolves via GetSpellLink; no usable spell nil
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, testLink = "spell:133" })
+	setUnit("player", { exists = true, dead = false, guid = "0x1111" })
+	setUnit("target", { exists = true, dead = false, guid = "0x2222" })
+	setSpell("DistanceSpell", {
+		testLink = "spell:456", inRange = nil, minRange = 5, maxRange = 6
+	})
+	ok("range fallback uses player distance", Spell.inRange("DistanceSpell", "target") == true)
+	state.spells.DistanceSpell.minRange = 6
+	state.spells.DistanceSpell.maxRange = 7
+	ok("range fallback rejects outside minimum", Spell.inRange("DistanceSpell", "target") == false)
 	eq("Link from name", SpellPicker.Link({ spell = "Fireball" }), "spell:133")
 	eq("Link nil without spell", SpellPicker.Link({}), nil)
 	eq("Link nil with empty name", SpellPicker.Link({ spell = "" }), nil)
