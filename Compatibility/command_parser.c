@@ -47,6 +47,23 @@ int command_input_parse_guid(CommandInput *input, ClientObjectGuid *guid) {
     return 1;
 }
 
+int command_input_parse_uint32(CommandInput *input, uint32_t *value) {
+    uint64_t number = 0;
+    unsigned int digits = 0;
+    skip_spaces(input);
+    while (input->cursor < input->end &&
+           *input->cursor >= '0' && *input->cursor <= '9') {
+        uint32_t digit = (uint32_t)(*input->cursor - '0');
+        if (number > (UINT32_MAX - digit) / 10u) return 0;
+        number = number * 10u + digit;
+        input->cursor++;
+        digits++;
+    }
+    if (digits == 0) return 0;
+    *value = (uint32_t)number;
+    return 1;
+}
+
 int command_input_parse_float(CommandInput *input, float *value) {
     double number = 0.0;
     double fractionalScale = 0.1;

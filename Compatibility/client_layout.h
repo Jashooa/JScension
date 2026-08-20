@@ -21,6 +21,11 @@
 #define CLNT_OBJ_MGR_OBJECT_PTR         0x004d4db0u
 #define CLNT_OBJ_MGR_GET_ACTIVE_PLAYER_OBJ 0x004038f0u
 
+/* Object enumeration and relationships */
+#define ENUM_VISIBLE_OBJECTS             0x004d4b30u
+#define CGUNIT_C__CAN_ASSIST             0x007293d0u
+#define CGUNIT_C__CAN_ATTACK             0x00729740u
+
 /* Movement and world */
 #define CGPLAYER_C__CLICK_TO_MOVE       0x00727400u
 #define CTM_BASE                        0x00ca11d8u

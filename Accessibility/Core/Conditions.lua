@@ -211,6 +211,7 @@ order = ConditionDefinitions.Build(Conditions, {
 	Spell = Spell,
 	Input = Input,
 	Player = Player,
+	Compatibility = ns.Compatibility,
 })
 Conditions.Order = order
 

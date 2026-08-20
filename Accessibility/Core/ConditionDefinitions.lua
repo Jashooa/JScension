@@ -17,7 +17,8 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	local Spell = dependencies.Spell
 	local Input = dependencies.Input
 	local Player = dependencies.Player
-	assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input and Player,
+	local Compatibility = dependencies.Compatibility
+	assert(Constants and Compare and Unit and Aura and Cooldown and Spell and Input and Player and Compatibility,
 		"condition definitions require all game dependencies")
 
 	local registry = conditions.Registry
@@ -343,6 +344,29 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Compare.compare(distance, condition.op, tonumber(condition.value))
 		end,
 	})
+	register("unit_nearby_count", {
+		label = "Units near unit",
+		fields = {
+			{ key = "unit", type = "unit" },
+			{ key = "value", type = "target_type" },
+			{ key = "radius", type = "number" },
+			{ key = "op", type = "op" },
+			{ key = "count", type = "number" },
+		},
+		describe = function(condition)
+			return ("%s units within %s yards of %s %s %s"):format(
+				condition.value or "?", tostring(condition.radius or "?"),
+				condition.unit or "?", condition.op or "?", tostring(condition.count or "?"))
+		end,
+		eval = function(condition)
+			if not Unit.exists(condition.unit) then return false end
+			local count = Compatibility.UnitCountInRange(
+				condition.unit, condition.value, tonumber(condition.radius))
+			if count == nil then return false end
+			return Compare.compare(count, condition.op, tonumber(condition.count))
+		end,
+	})
+
 
 	register("spell_ready", {
 		label = "Spell is ready",
@@ -502,7 +526,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
 		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
 		"unit_casting", "unit_casting_spell", "unit_cast_interruptible",
-		"unit_spell_range", "unit_range",
+		"unit_spell_range", "unit_range", "unit_nearby_count",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",
 		"player_combo_points", "player_shapeshift_form",
 		"player_is_tanking_unit", "player_unit_threat_percent", "modifier_keys", "lua",

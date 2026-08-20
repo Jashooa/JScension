@@ -80,6 +80,13 @@ end
 local function runCommand(command, ...)
 	return _G.Compatibility(string.format(command, ...))
 end
+local UNIT_COUNT_RELATIONSHIPS = {
+	any = 0,
+	enemy = 1,
+	friendly = 2,
+	player = 3,
+}
+
 
 function Compatibility.Call(fmt, ...)
 	local n = select("#", ...)
@@ -146,6 +153,15 @@ function Compatibility.Scale(unit)
 	if not guid then return end
 	return runCommand("Compatibility_Scale %s", guid)
 end
+-- UnitCountInRange counts living visible units around a unit GUID. targetType
+-- uses the same any/enemy/friendly/player values as the condition editor.
+function Compatibility.UnitCountInRange(centerUnit, targetType, radius)
+	local guid = Unit.guid(centerUnit)
+	local relationship = type(targetType) == "string" and UNIT_COUNT_RELATIONSHIPS[targetType]
+	if not guid or relationship == nil or type(radius) ~= "number" or radius < 0 then return end
+	return runCommand("Compatibility_UnitCountInRange %s %d %f", guid, relationship, radius)
+end
+
 
 -- LoS returns true if there is a clear line of sight between the player and
 -- a unit, false if obstructed. Eye height is 2.1 * scale per end.

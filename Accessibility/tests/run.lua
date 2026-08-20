@@ -52,6 +52,14 @@ fake.Compatibility = function(script)
 	elseif script:find("Compatibility_Scale ", 1, true) then
 		local guid = script:match("Compatibility_Scale%s+(.+)$")
 		return guid == "0x1111" and 1.0 or 1.5
+	elseif script:find("Compatibility_UnitCountInRange ", 1, true) then
+		local guid, relationship, radius =
+			script:match("Compatibility_UnitCountInRange%s+(%S+)%s+(%d+)%s+([%d%.]+)$")
+		if guid == "0x2222" and relationship == "1" and radius == "8.000000" then return 3 end
+		if guid == "0x1111" and relationship == "2" and radius == "20.000000" then return 2 end
+		if guid == "0xdead" then return nil end
+
+		return 0
 	elseif script:find("Compatibility_LOS ", 1, true) then
 		return 1
 	elseif script:find("Compatibility_PlaceGround ", 1, true) then
@@ -59,6 +67,7 @@ fake.Compatibility = function(script)
 	end
 	return true, true, nil
 end
+
 
 -- Ace3 stubs so Config.lua loads and its option closures run in the harness.
 fake.LibStub = function(name)
@@ -413,6 +422,16 @@ do
 	clearScripts()
 	eq("Scale result", Compatibility.Scale("target"), 1.5)
 	eq("Scale command", scripts[1], "Compatibility_Scale 0x2222")
+	clearScripts()
+	eq("UnitCountInRange result", Compatibility.UnitCountInRange("target", "enemy", 8), 3)
+	eq("UnitCountInRange command", scripts[1], "Compatibility_UnitCountInRange 0x2222 1 8.000000")
+	ok("UnitCountInRange rejects unknown target type",
+		Compatibility.UnitCountInRange("target", "unknown", 8) == nil)
+	clearScripts()
+	eq("friendly UnitCountInRange result", Compatibility.UnitCountInRange("player", "friendly", 20), 2)
+	eq("friendly UnitCountInRange command", scripts[1], "Compatibility_UnitCountInRange 0x1111 2 20.000000")
+
+
 
 	clearScripts()
 	Compatibility.ConfirmGround("target")
@@ -536,7 +555,7 @@ do
 		"unit_moving", "unit_standing_still",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
 		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
-		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_spell_range", "unit_range",
+		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_spell_range", "unit_range", "unit_nearby_count",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",
 		"player_combo_points", "player_shapeshift_form",
 		"player_is_tanking_unit", "player_unit_threat_percent", "modifier_keys", "lua",
@@ -545,6 +564,7 @@ do
 	eq("spell ready label", Conditions.Registry.spell_ready.label, "Spell is ready")
 	eq("spell range label", Conditions.Registry.unit_spell_range.label, "Unit is in spell range")
 	eq("unit range label", Conditions.Registry.unit_range.label, "Unit distance")
+	eq("nearby count label", Conditions.Registry.unit_nearby_count.label, "Units near unit")
 	eq("aura remaining label stays consistent", Conditions.Registry.unit_aura_remains.label, "Unit aura time remaining")
 	local typeList = Conditions.TypeList()
 	local seenTypes = {}
@@ -692,6 +712,8 @@ do
 	eq("player combo field order", fieldKeys("player_combo_points"), "op,value")
 	eq("modifier field order", fieldKeys("modifier_keys"), "key")
 	eq("aura presence field order", fieldKeys("unit_aura_present"), "unit,aura,kind,mine")
+	eq("nearby count field order", fieldKeys("unit_nearby_count"), "unit,value,radius,op,count")
+
 	local presenceClean = Conditions.Sanitize({
 		type = "unit_aura_present", unit = "target", aura = "Moonfire",
 		kind = "debuff", op = ">", value = 3
@@ -787,6 +809,33 @@ do
 	ok("unit_range compares unit distance", Conditions.Eval({ type = "unit_range", unit = "target", op = "<", value = 6 }) == true)
 	ok("unit_range rejects distant unit", Conditions.Eval({ type = "unit_range", unit = "target", op = ">", value = 6 }) == false)
 	ok("unit_spell_range evaluates spell range", Conditions.Eval({ type = "unit_spell_range", spell = "Fireball", unit = "target" }) == true)
+	ok("unit_nearby_count compares enemy count",
+		Conditions.Eval({ type = "unit_nearby_count", unit = "target", value = "enemy",
+			radius = 8, op = ">=", count = 3 }) == true)
+	ok("unit_nearby_count description",
+		Conditions.Describe({ type = "unit_nearby_count", unit = "target", value = "enemy",
+			radius = 8, op = ">=", count = 3 }) == "enemy units within 8 yards of target >= 3")
+	ok("unit_nearby_count rejects a higher threshold",
+		Conditions.Eval({ type = "unit_nearby_count", unit = "target", value = "enemy",
+			radius = 8, op = ">=", count = 5 }) == false)
+	ok("unit_nearby_count rejects missing radius",
+		Conditions.Eval({ type = "unit_nearby_count", unit = "target", value = "enemy",
+			op = ">=", count = 3 }) == false)
+	ok("unit_nearby_count supports negation",
+		Conditions.Eval({ type = "unit_nearby_count", unit = "target", value = "enemy",
+			radius = 8, op = ">=", count = 5, negated = true }) == true)
+	setUnit("target", { exists = true, dead = false, guid = "0xdead" })
+	ok("unit_nearby_count fails closed on native failure",
+		Conditions.Eval({ type = "unit_nearby_count", unit = "target", value = "enemy",
+			radius = 8, op = ">=", count = 1 }) == false)
+	setUnit("target", { exists = true, dead = false, guid = "0x2222", hostile = true })
+	local nearbySwitched = Conditions.Sanitize({
+		type = "unit_target_type", unit = "target", value = "enemy", radius = 8, count = 3
+	})
+	ok("nearby count fields do not leak across type switches",
+		nearbySwitched.radius == nil and nearbySwitched.count == nil)
+
+
 	local migratedSpellRange = Conditions.Sanitize({ type = "unit_range", spell = "Fireball", unit = "target" })
 	eq("old unit_range migrates to unit_spell_range", migratedSpellRange.type, "unit_spell_range")
 

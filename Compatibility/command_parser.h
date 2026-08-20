@@ -14,6 +14,8 @@ int command_input_matches_prefix(const char *text, size_t length, const char *pr
                                  CommandInput *input);
 int command_input_parse_guid(CommandInput *input, ClientObjectGuid *guid);
 int command_input_parse_float(CommandInput *input, float *value);
+int command_input_parse_uint32(CommandInput *input, uint32_t *value);
+
 int command_input_finished(CommandInput *input);
 
 #endif /* COMPATIBILITY_COMMAND_PARSER_H */

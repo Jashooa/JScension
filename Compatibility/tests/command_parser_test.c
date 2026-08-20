@@ -42,6 +42,38 @@ static void test_guid_parsing(void) {
     expect_true(command_input_parse_guid(&input, &guid), "GUID parses the valid prefix");
     expect_true(!command_input_finished(&input), "GUID caller detects trailing invalid text");
 }
+static void expect_uint32(const char *text, uint32_t expected, const char *name) {
+    CommandInput input;
+    uint32_t actual = 0;
+    command_input_init(&input, text, strlen(text));
+    expect_true(command_input_parse_uint32(&input, &actual), name);
+    expect_true(actual == expected, name);
+    expect_true(command_input_finished(&input), name);
+}
+
+static void test_uint32_parsing(void) {
+    CommandInput input;
+    uint32_t value;
+
+    expect_uint32(" 0 ", 0u, "uint32 accepts zero");
+    expect_uint32("3", 3u, "uint32 accepts the player relationship code");
+    expect_uint32("4294967295", UINT32_MAX, "uint32 accepts the maximum value");
+
+    command_input_init(&input, "-1", 2);
+    expect_true(!command_input_parse_uint32(&input, &value), "uint32 rejects a negative sign");
+    command_input_init(&input, "+1", 2);
+    expect_true(!command_input_parse_uint32(&input, &value), "uint32 rejects a positive sign");
+    command_input_init(&input, "abc", 3);
+    expect_true(!command_input_parse_uint32(&input, &value), "uint32 rejects alphabetic input");
+    command_input_init(&input, "4294967296", 10);
+    expect_true(!command_input_parse_uint32(&input, &value), "uint32 rejects overflow");
+    command_input_init(&input, "1.0", 3);
+    expect_true(command_input_parse_uint32(&input, &value), "uint32 parses the decimal prefix");
+    expect_true(!command_input_finished(&input), "uint32 caller detects fractional text");
+    command_input_init(&input, "12abc", 5);
+    expect_true(command_input_parse_uint32(&input, &value), "uint32 parses the numeric prefix");
+    expect_true(!command_input_finished(&input), "uint32 caller detects alphabetic suffix");
+}
 
 static void expect_float(const char *text, float expected, const char *name) {
     CommandInput input;
@@ -87,6 +119,8 @@ static void test_prefix_matching(void) {
 
 int main(void) {
     test_guid_parsing();
+    test_uint32_parsing();
+
     test_float_parsing();
     test_prefix_matching();
     if (failures != 0) {
