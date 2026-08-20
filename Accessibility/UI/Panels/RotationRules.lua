@@ -171,6 +171,10 @@ end
 -- type is full width, fields keep their default single width.
 local function buildConditionSettings(panel, rule, condIndex, container)
 	local condition = rule.conditions[condIndex]
+	local controls = AceGUI:Create("SimpleGroup")
+	controls:SetFullWidth(true)
+	controls:SetLayout("Grid")
+	container:AddChild(controls)
 
 	-- updateCardState refreshes the title text and color. Red = incomplete,
 	-- orange = disabled, green = enabled and valid. Red overrides orange.
@@ -186,7 +190,7 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 		Profile.setConditionEnabled(condition, value)
 		updateCardState()
 	end)
-	container:AddChild(enabled)
+	controls:AddChild(enabled)
 
 	local negate = AceGUI:Create("CheckBox")
 	negate:SetLabel("Negate")
@@ -195,11 +199,11 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 		Profile.setConditionNegated(condition, value)
 		updateCardState()
 	end)
-	container:AddChild(negate)
+	controls:AddChild(negate)
 
 	local typeDropdown = AceGUI:Create("Dropdown")
-	typeDropdown:SetLabel("Condition")
 	typeDropdown:SetFullWidth(true)
+	typeDropdown:SetUserData("colspan", 2)
 	typeDropdown:SetList(conditionTypeValues())
 	typeDropdown:SetValue(condition.type)
 	typeDropdown:SetCallback("OnValueChanged", function(_, _, value)
@@ -207,13 +211,15 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 		updateCardState()
 		OptionPanel.Refresh(panel)
 	end)
-	container:AddChild(typeDropdown)
+	controls:AddChild(typeDropdown)
 
 	local fields = Conditions.Fields(condition.type)
 	if fields then
 		for i = 1, #fields do
 			local field = fields[i]
-			container:AddChild(conditionField(condition, field.key, field.type, updateCardState))
+			local control = conditionField(condition, field.key, field.type, updateCardState)
+			if field.type == "code" then control:SetUserData("colspan", 2) end
+			controls:AddChild(control)
 		end
 		updateCardState()
 	end
@@ -300,6 +306,10 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 
 	if ruleExpanded[rule] then
 		card:SetBorderVisible(true)
+		local controls = AceGUI:Create("SimpleGroup")
+		controls:SetFullWidth(true)
+		controls:SetLayout("Grid")
+		card:AddChild(controls)
 
 		local enabled = AceGUI:Create("CheckBox")
 		enabled:SetLabel("Enabled")
@@ -308,31 +318,30 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 			Profile.setRuleEnabled(rule, value)
 			updateCardState()
 		end)
-		card:AddChild(enabled)
+		controls:AddChild(enabled)
 
 		local labelInput = Fields.Text("Label", rule.name, function(value)
 			Profile.setRuleName(rule, value)
 			card:SetTitle(ruleTitle(rule, ruleIndex))
 		end)
-		labelInput:SetFullWidth(true)
-		card:AddChild(labelInput)
+		controls:AddChild(labelInput)
 		local spellDropdown = Fields.Dropdown("Spell", spellValues(rule), rule.spell, function(value)
 			Profile.setRuleSpell(rule, value)
 			updateCardState()
 			OptionPanel.Refresh(panel)
 		end)
-		spellDropdown:SetFullWidth(true)
-		card:AddChild(spellDropdown)
+		controls:AddChild(spellDropdown)
 
 		local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
 			Profile.setRuleUnit(rule, value)
 			updateCardState()
 		end)
-		card:AddChild(unitDropdown)
+		controls:AddChild(unitDropdown)
 
 		local conditionsGroup = AceGUI:Create("TitleButtonGroup")
 		conditionsGroup:SetTitle("Conditions")
 		conditionsGroup:SetFullWidth(true)
+		conditionsGroup:SetUserData("colspan", 2)
 		conditionsGroup:SetLayout("Flow")
 		conditionsGroup:SetTitleButtons({
 			{ label = "Add condition", func = function()
@@ -341,7 +350,7 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 				OptionPanel.Refresh(panel)
 			end },
 		})
-		card:AddChild(conditionsGroup)
+		controls:AddChild(conditionsGroup)
 
 		for i = 1, #rule.conditions do
 			conditionCard(panel, rule, i, conditionsGroup)

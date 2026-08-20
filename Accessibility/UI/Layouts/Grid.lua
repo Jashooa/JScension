@@ -21,6 +21,19 @@ AceGUI:RegisterLayout("Grid", function(content, children)
 	local totalW = content:GetWidth() or 0
 	if totalW <= 0 then totalW = content.width or 300 end
 	local cellW = (totalW - padH * (cols - 1)) / cols
+	-- Nested containers must lay out at their final width before row heights
+	-- are measured. Otherwise a child grid can grow after this grid positions
+	-- it, causing its contents to escape the parent card.
+	local function layoutChild(child, width)
+		child:SetWidth(width)
+		if child.DoLayout then child:DoLayout() end
+	end
+	for i = 1, #children do
+		local child = children[i]
+		local span = child:GetUserData("colspan") or 1
+		if span > cols then span = cols end
+		layoutChild(child, cellW * span + padH * (span - 1))
+	end
 
 	-- first pass: calculate each row's max height
 	local rows = {}
@@ -68,8 +81,7 @@ AceGUI:RegisterLayout("Grid", function(content, children)
 		end
 		frame:ClearAllPoints()
 		frame:SetPoint("TOPLEFT", content, "TOPLEFT", x, -offsetY)
-		frame:SetWidth(w)
-		if child.OnWidthSet then child:OnWidthSet(w) end
+		-- Width and nested layout were established in the prepass.
 		frame:Show()
 
 		x = x + w + padH
