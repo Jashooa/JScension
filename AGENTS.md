@@ -27,12 +27,16 @@ injected shim that lets it cast protected spells. This repo is the
 
 ## Scripts
 
+- `scripts/config.example.sh` — committed template for machine-specific
+  settings. Copy it to the ignored `scripts/config.sh` and edit the prefix,
+  Wine binary, and toolchain commands.
 - `scripts/build.sh` — build the shim into `bin/`.
-- `scripts/deploy.sh` — build the shim, deploy the addon to the game's
-  `Interface/AddOns/`, install the shim to `C:\local`.
+- `scripts/test.sh` — run the native and Lua contract tests.
+- `scripts/deploy.sh` — run tests, build the shim, deploy the addon to the
+  game's `Interface/AddOns/`, and install the shim to `C:\local`.
 - `scripts/inject.sh` — inject the shim into the running game (after every
   restart).
-- `scripts/config.sh` — shared paths (prefix, game dir, wine, file names).
+- `scripts/script_helpers.sh` — shared config loading and prerequisite checks.
 
 ## Notes
 

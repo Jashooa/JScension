@@ -3,7 +3,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOLUTION_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/script_helpers.sh"
+require_executable gcc
+
 TEST_BINARY="$SOLUTION_DIR/bin/command_parser_test"
 
 mkdir -p "$SOLUTION_DIR/bin"

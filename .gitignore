@@ -2,6 +2,9 @@
 # Rebuilt by scripts/build.sh, deployed by scripts/deploy.sh.
 bin/
 
+# Machine-specific script configuration.
+/scripts/config.sh
+
 # Editor/OS noise.
 *.swp
 *.swo
