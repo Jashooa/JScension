@@ -525,6 +525,7 @@ do
 	eq("gcdProbeSpell coerced", p.gcdProbeSpell, "")
 	eq("queueWindow defaulted", p.queueWindow, 0.4)
 	eq("antiSpamWindow defaulted", p.antiSpamWindow, 1.0)
+	eq("jitterWindow defaulted", p.jitterWindow, 0.0)
 	eq("legacy rules migrated to one rotation", #p.rotations, 1)
 	eq("migrated rotation named Default", p.rotations[1].name, "Default")
 	eq("active set to Default", p.active, "Default")
@@ -548,6 +549,12 @@ do
 	local highAnti = { antiSpamWindow = 3 }
 	Profile.sanitizeProfile(highAnti)
 	eq("antiSpamWindow clamps high", highAnti.antiSpamWindow, 2.0)
+	local lowJitter = { jitterWindow = -1 }
+	Profile.sanitizeProfile(lowJitter)
+	eq("jitterWindow clamps low", lowJitter.jitterWindow, 0.0)
+	local highJitter = { jitterWindow = 1.2 }
+	Profile.sanitizeProfile(highJitter)
+	eq("jitterWindow clamps high", highJitter.jitterWindow, 1.0)
 end
 
 -- ---------------------------------------------------------------------------
@@ -921,6 +928,7 @@ local function resetRotation()
 	state.time = scenarioTime
 	state.secure = true
 	prof().antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW
+	prof().jitterWindow = 0
 	setKnown({ "Fireball", "Renew", "probe" })
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
 	setSpell("Renew", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
@@ -1001,6 +1009,50 @@ state.time = t0 + 0.5
 ok("anti-spam blocks a fast re-cast", Rotation.CastBest() == false)
 state.time = t0 + 1.1
 ok("cast succeeds after the anti-spam window", Rotation.CastBest() == true)
+-- jitter delays automatic casts once, then preserves the selected candidate.
+local originalRandom = math.random
+math.random = function() return 0.5 end
+resetRotation()
+prof().jitterWindow = 0.4
+clearScripts()
+local jitterStart = state.time
+ok("automatic jitter holds the first pulse", Rotation.CastBest(true) == false)
+eq("automatic jitter emits nothing while waiting", #scripts, 0)
+state.time = jitterStart + 0.19
+ok("automatic jitter still holds before deadline", Rotation.CastBest(true) == false)
+state.time = jitterStart + 0.2
+ok("automatic jitter emits at deadline", Rotation.CastBest(true) == true)
+
+-- Manual casts bypass the automatic jitter delay.
+resetRotation()
+prof().jitterWindow = 0.4
+clearScripts()
+ok("manual cast bypasses jitter", Rotation.CastBest(false) == true)
+
+-- A sampled release inside the queue window still uses the client queue.
+resetRotation()
+prof().jitterWindow = 0.2
+state.units.player.castingEndMs = (state.time + 0.5) * 1000
+state.units.player.castingSpell = "LongCast"
+clearScripts()
+local queuedStart = state.time
+ok("queue jitter arms while casting", Rotation.CastBest(true) == false)
+state.time = queuedStart + 0.1
+ok("queue jitter submits inside queue window", Rotation.CastBest(true) == true)
+
+-- A sampled release after cast end creates a real inter-cast gap.
+resetRotation()
+prof().jitterWindow = 0.4
+state.units.player.castingEndMs = (state.time + 0.2) * 1000
+state.units.player.castingSpell = "LongCast"
+clearScripts()
+local gapStart = state.time
+ok("gap jitter arms while casting", Rotation.CastBest(true) == false)
+state.time = gapStart + 0.25
+state.units.player.castingEndMs = nil
+ok("gap jitter emits after cast end", Rotation.CastBest(true) == true)
+math.random = originalRandom
+
 resetRotation()
 setRules({
 	{ spell = "Blocked", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },

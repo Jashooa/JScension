@@ -91,6 +91,14 @@ local function build(panel)
 		Profile.setAntiSpamWindow(value)
 	end)
 	group:AddChild(antiSpam)
+	local jitter = AceGUI:Create("Slider")
+	jitter:SetLabel("Cast jitter")
+	jitter:SetSliderValues(0.0, Constants.MAX_JITTER_WINDOW, 0.05)
+	jitter:SetValue(profile.jitterWindow or Constants.DEFAULT_JITTER_WINDOW)
+	jitter:SetCallback("OnValueChanged", function(_, _, value)
+		Profile.setJitterWindow(value)
+	end)
+	group:AddChild(jitter)
 end
 
 OptionPanel.Register({

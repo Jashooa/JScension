@@ -40,6 +40,7 @@ Profile.defaults = {
 		gcdProbeSpell = "",
 		queueWindow = 0.4,   -- seconds; 0 disables early-queueing
 		antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW,
+		jitterWindow = ns.Constants.DEFAULT_JITTER_WINDOW,
 		active = DEFAULT_ROTATION_NAME,
 		rotations = {
 			Profile.newRotation(DEFAULT_ROTATION_NAME),
@@ -140,6 +141,8 @@ function Profile.sanitizeProfile(p)
 	p.queueWindow = math.max(0, math.min(1.0, asNumber(p.queueWindow, 0.4)))
 	-- anti-spam window: 0 (off) .. 2.0s for no-cooldown instant spells
 	p.antiSpamWindow = clamp(asNumber(p.antiSpamWindow, Constants.DEFAULT_ANTI_SPAM_WINDOW), 0, 2.0)
+	-- jitter window: 0 (off) .. 1.0s random delay before automatic casts
+	p.jitterWindow = clamp(asNumber(p.jitterWindow, Constants.DEFAULT_JITTER_WINDOW), 0, Constants.MAX_JITTER_WINDOW)
 	-- migrate the old flat rules array into one "Default" rotation
 	local srcRotations = p.rotations
 	if type(srcRotations) ~= "table" then
@@ -472,6 +475,13 @@ end
 function Profile.setQueueWindow(seconds)
 	Profile.current().queueWindow = clamp(asNumber(seconds, Constants.DEFAULT_QUEUE_WINDOW), 0, 1.0)
 end
+function Profile.setJitterWindow(seconds)
+	Profile.current().jitterWindow = clamp(asNumber(seconds, Constants.DEFAULT_JITTER_WINDOW), 0, Constants.MAX_JITTER_WINDOW)
+	if ns.Rotation and ns.Rotation.ClearJitter then
+		ns.Rotation.ClearJitter()
+	end
+end
+
 
 
 ns.Profile = Profile

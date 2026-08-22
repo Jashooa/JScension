@@ -15,6 +15,9 @@ ns.Constants = {
 	DEFAULT_QUEUE_WINDOW = 0.4,
 	-- Default interval that spaces repeated no-cooldown instant casts.
 	DEFAULT_ANTI_SPAM_WINDOW = 1.0,
+	-- Maximum configured random delay before an automatic cast.
+	DEFAULT_JITTER_WINDOW = 0.0,
+	MAX_JITTER_WINDOW = 1.0,
 	-- The valid unit tokens, in editor display order. An ordered array, not
 	-- a map: the dropdown builder derives the AceGUI map from it, and the
 	-- first element ("player") is the default when a new condition is added.

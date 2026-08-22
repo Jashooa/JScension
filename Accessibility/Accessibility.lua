@@ -90,21 +90,23 @@ function A:StartPulse()
 end
 
 function A:StopPulse()
-	if not self.pulseHandle then return end
-	self:CancelTimer(self.pulseHandle)
-	self.pulseHandle = nil
+	if self.pulseHandle then
+		self:CancelTimer(self.pulseHandle)
+		self.pulseHandle = nil
+	end
+	Rotation.ClearJitter()
 end
 
 -- Pulse is the auto-mode tick. It runs many times a second, so it must do as
 -- little as possible when switched off.
 function A:Pulse()
 	if not self.db.profile.auto then return end
-	Rotation.CastBest()
+	Rotation.CastBest(true)
 end
 
--- PulseOnce casts once, from a click or a keypress.
+-- PulseOnce casts once, from a click or a keypress. Manual casts bypass jitter.
 function A:PulseOnce()
-	Rotation.CastBest()
+	Rotation.CastBest(false)
 end
 
 function A:ToggleAuto()

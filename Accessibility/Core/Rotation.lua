@@ -28,6 +28,48 @@ assert(Compatibility and Conditions and SpellPicker and Profile and Cooldown
 
 local lastCastAt = {}       -- spell name -> time of last attempt
 local lastAttemptTime = 0   -- time of last attempt (GCD fallback)
+local jitterPending = {
+	rule = nil,
+	spell = nil,
+	unit = nil,
+	guid = nil,
+	dueAt = nil,
+	window = nil,
+}
+
+local function clearJitter()
+	jitterPending.rule = nil
+	jitterPending.spell = nil
+	jitterPending.unit = nil
+	jitterPending.guid = nil
+	jitterPending.dueAt = nil
+	jitterPending.window = nil
+end
+
+function Rotation.ClearJitter()
+	clearJitter()
+end
+
+local function candidateGuid(rule)
+	return Unit.guid(rule.unit or "target")
+end
+
+local function sameJitterCandidate(rule, guid)
+	return jitterPending.rule == rule
+		and jitterPending.spell == rule.spell
+		and jitterPending.unit == (rule.unit or "target")
+		and jitterPending.guid == guid
+end
+
+local function armJitter(rule, guid, currentTime, window)
+	jitterPending.rule = rule
+	jitterPending.spell = rule.spell
+	jitterPending.unit = rule.unit or "target"
+	jitterPending.guid = guid
+	jitterPending.dueAt = currentTime + math.random() * window
+	jitterPending.window = window
+end
+
 
 -- The result of the last emitted cast, for the status command.
 Rotation.lastResult = { spell = nil, ok = nil, value = nil, err = nil }
@@ -139,6 +181,14 @@ local function selectNextRule(currentTime)
 	end
 	return nil
 end
+local function emitAndLog(rule, currentTime)
+	emitRule(rule, currentTime)
+	clearJitter()
+	local label = (rule.name and rule.name ~= "") and rule.name or rule.spell
+	Log.Write("cast", ("cast %s (rule %s)"):format(rule.spell, label))
+	return true
+end
+
 
 -- NextRule returns the first rule that would pass every gate, or nil. It is
 -- the same walk CastBest performs, without casting; the button uses it to show
@@ -160,30 +210,81 @@ function Rotation.InQueueWindow()
 end
 
 -- CastBest casts the first rule that passes every gate. It returns true when
-function Rotation.CastBest()
+function Rotation.CastBest(automatic)
 	local currentTime = GetTime()
-	if Rotation.IsOnGCD(currentTime) then
-		return false
+
+	if not automatic then
+		clearJitter()
+		if Rotation.IsOnGCD(currentTime) then return false end
+		if not Rotation.InQueueWindow() then return false end
+		if Unit.isDeadOrGhost("player") then
+			Log.Write("cast", "player dead")
+			return false
+		end
+		if not Compatibility.IsCompatible() then
+			Log.Write("cast", "not compatible")
+			return false
+		end
+		local rule = selectNextRule(currentTime)
+		if not rule then return false end
+		return emitAndLog(rule, currentTime)
 	end
-	if not Rotation.InQueueWindow() then
-		return false
+
+	local jitterWindow = Profile.current().jitterWindow or Constants.DEFAULT_JITTER_WINDOW
+	if jitterWindow <= 0 then
+		clearJitter()
+		if Rotation.IsOnGCD(currentTime) then return false end
+		if not Rotation.InQueueWindow() then return false end
+		if Unit.isDeadOrGhost("player") then
+			Log.Write("cast", "player dead")
+			return false
+		end
+		if not Compatibility.IsCompatible() then
+			Log.Write("cast", "not compatible")
+			return false
+		end
+		local rule = selectNextRule(currentTime)
+		if not rule then return false end
+		return emitAndLog(rule, currentTime)
 	end
+
 	if Unit.isDeadOrGhost("player") then
+		clearJitter()
 		Log.Write("cast", "player dead")
 		return false
 	end
 	if not Compatibility.IsCompatible() then
+		clearJitter()
 		Log.Write("cast", "not compatible")
 		return false
 	end
+
 	local rule = selectNextRule(currentTime)
 	if not rule then
+		clearJitter()
 		return false
 	end
-	emitRule(rule, currentTime)
-	local label = (rule.name and rule.name ~= "") and rule.name or rule.spell
-	Log.Write("cast", ("cast %s (rule %s)"):format(rule.spell, label))
-	return true
+	local guid = candidateGuid(rule)
+	if jitterPending.window ~= jitterWindow or not sameJitterCandidate(rule, guid) then
+		armJitter(rule, guid, currentTime, jitterWindow)
+	end
+	if currentTime < jitterPending.dueAt then return false end
+
+	local releaseRule = selectNextRule(currentTime)
+	if not releaseRule then
+		clearJitter()
+		return false
+	end
+	local releaseGuid = candidateGuid(releaseRule)
+	if releaseRule ~= jitterPending.rule
+		or releaseRule.spell ~= jitterPending.spell
+		or releaseGuid ~= jitterPending.guid then
+		clearJitter()
+		armJitter(releaseRule, releaseGuid, currentTime, jitterWindow)
+		return false
+	end
+	if Rotation.IsOnGCD(currentTime) or not Rotation.InQueueWindow() then return false end
+	return emitAndLog(releaseRule, currentTime)
 end
 
 -- Simulate reports what CastBest would cast, without casting. It returns a
