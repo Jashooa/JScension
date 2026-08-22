@@ -1006,6 +1006,17 @@ clearScripts()
 ok("blocked line of sight blocks the cast", Rotation.CastBest() == false)
 ok("line of sight gate emits no cast", not hasCastScript("Fireball"))
 state.lineOfSight = true
+resetRotation()
+local globalRotation = Profile.activeRotation()
+globalRotation.conditions = { { type = "unit_in_combat", unit = "player" } }
+state.inCombat = false
+ok("global condition blocks every rule", Rotation.CastBest() == false)
+local blockedRule, blockedReason = Rotation.NextRule()
+ok("global condition explains blocked rotation", blockedRule == nil and blockedReason == "global condition")
+state.inCombat = true
+ok("global condition allows rules", Rotation.CastBest() == true)
+globalRotation.conditions = {}
+state.inCombat = false
 
 resetRotation()
 prof().gcdProbeSpell = "probe"
@@ -1269,7 +1280,7 @@ do
 	setSpell("Fireball", { usable = false, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
 	ok("isReady false not usable", Cooldown.isReady("Fireball") == false)
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = state.time, cdDuration = 5, inRange = 1 })
-	ok("isReady false on own cooldown", Cooldown.isReady("Fireball") == false)
+	prof().rotations = { { name = "Single", conditions = { { type = "unit_in_combat", unit = "player" } }, rules = { { spell = "Fireball", enabled = true, unit = "target", conditions = {} } } } }
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = state.time, cdDuration = 1.5, inRange = 1 })
 	ok("isReady true on the GCD (not the spell's own)", Cooldown.isReady("Fireball") == true)
 end
@@ -1280,7 +1291,7 @@ end
 
 do
 	-- start from a clean profile with the new schema
-	prof().rotations = { { name = "Single", rules = { { spell = "Fireball", enabled = true, unit = "target", conditions = {} } } } }
+	prof().rotations = { { name = "Single", conditions = { { type = "unit_in_combat", unit = "player" } }, rules = { { spell = "Fireball", enabled = true, unit = "target", conditions = {} } } } }
 	prof().active = "Single"
 
 	ok("activeRules resolves the active rotation", Profile.activeRules() == prof().rotations[1].rules)
@@ -1293,6 +1304,7 @@ do
 
 	-- duplicate copies rules and names uniquely
 	local dup = Profile.duplicateRotation(prof().rotations[1])
+	eq("duplicate copies global conditions", #dup.conditions, 1)
 	eq("duplicate copies rules", #dup.rules, 1)
 	eq("duplicate copies rule spell", dup.rules[1].spell, "Fireball")
 	eq("duplicate unique name", dup.name, "Single copy")

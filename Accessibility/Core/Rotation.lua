@@ -280,8 +280,19 @@ local function emitRule(rule, currentTime)
 	return ok, value, err
 end
 
+local function passesGlobalConditions(rotation)
+	local conditions = rotation.conditions
+	if not conditions then return true end
+	for i = 1, #conditions do
+		if not Conditions.Eval(conditions[i]) then return false end
+	end
+	return true
+end
+
 local function selectNextRule(currentTime)
-	local rules = Profile.activeRules()
+	local rotation = Profile.activeRotation()
+	if not passesGlobalConditions(rotation) then return nil, "global condition" end
+	local rules = rotation.rules
 	for i = 1, #rules do
 		local rule = rules[i]
 		if rule.enabled and rule.spell and rule.spell ~= "" then
@@ -309,9 +320,9 @@ function Rotation.NextRule()
 	local currentTime = GetTime()
 	if Unit.isDeadOrGhost("player") then return nil, "player dead" end
 	if not Compatibility.IsCompatible() then return nil, "not compatible" end
-	local rule = selectNextRule(currentTime)
+	local rule, reason = selectNextRule(currentTime)
 	if rule then return rule end
-	return nil, "no passing rule"
+	return nil, reason or "no passing rule"
 end
 
 -- InQueueWindow delegates to Game/Cast, which owns the queue-window logic.
@@ -407,10 +418,15 @@ end
 -- Simulate reports what CastBest would cast, without casting. It returns a
 -- table of one-line strings, one per rule.
 function Rotation.Simulate()
-	local rules = Profile.activeRules()
+	local rotation = Profile.activeRotation()
+	local rules = rotation.rules
 	local lines = {}
 	if not rules or #rules == 0 then
 		lines[1] = "no rules"
+		return lines
+	end
+	if not passesGlobalConditions(rotation) then
+		lines[1] = "blocked: global condition"
 		return lines
 	end
 	local currentTime = GetTime()

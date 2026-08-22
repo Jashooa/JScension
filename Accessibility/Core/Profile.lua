@@ -19,7 +19,7 @@ local Profile = {}
 local DEFAULT_ROTATION_NAME = "Default"
 
 function Profile.newRotation(name)
-	return { name = name, rules = {} }
+	return { name = name, conditions = {}, rules = {} }
 end
 
 function Profile.newRule()
@@ -115,6 +115,14 @@ local function sanitizeRotation(rotation)
 	if name == "" then name = "Rotation" end
 
 	local clean = Profile.newRotation(name)
+	if type(rotation.conditions) == "table" then
+		for i = 1, #rotation.conditions do
+			local condition = ns.Conditions and ns.Conditions.Sanitize(rotation.conditions[i]) or nil
+			if condition then
+				clean.conditions[#clean.conditions + 1] = condition
+			end
+		end
+	end
 	local rules = type(rotation.rules) == "table" and rotation.rules or {}
 	for i = 1, #rules do
 		local r = sanitizeRule(rules[i])
@@ -251,25 +259,28 @@ end
 -- second edit here. conditions is a list and is deep-copied separately.
 local RULE_FIELDS = { "name", "spell", "enabled", "unit" }
 
+local function copyCondition(source)
+	local cacheKeys = ns.Conditions and ns.Conditions.CacheKeys or {}
+	local condition = {}
+	for key, value in pairs(source) do
+		if not cacheKeys[key] then
+			condition[key] = value
+		end
+	end
+	return condition
+end
+
 -- copyRule deep-copies one rule (conditions included), stripping the derived
 -- compile cache the "lua" condition type stores on its table. The cache keys
 -- are declared in Conditions.CacheKeys (resolved at call time: Conditions
 -- loads after Profile).
 local function copyRule(rule)
-	local cacheKeys = ns.Conditions and ns.Conditions.CacheKeys or {}
 	local copy = { conditions = {} }
 	for i = 1, #RULE_FIELDS do
 		copy[RULE_FIELDS[i]] = rule[RULE_FIELDS[i]]
 	end
 	for i = 1, #rule.conditions do
-		local src = rule.conditions[i]
-		local condition = {}
-		for k, v in pairs(src) do
-			if not cacheKeys[k] then
-				condition[k] = v
-			end
-		end
-		copy.conditions[i] = condition
+		copy.conditions[i] = copyCondition(rule.conditions[i])
 	end
 	return copy
 end
@@ -282,6 +293,10 @@ end
 
 function Profile.duplicateRotation(rotation)
 	local copy = Profile.newRotation(uniqueName(rotation.name .. " copy"))
+	local conditions = type(rotation.conditions) == "table" and rotation.conditions or {}
+	for i = 1, #conditions do
+		copy.conditions[i] = copyCondition(conditions[i])
+	end
 	for i = 1, #rotation.rules do
 		copy.rules[i] = copyRule(rotation.rules[i])
 	end

@@ -360,8 +360,14 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		})
 		controls:AddChild(conditionsGroup)
 
-		for i = 1, #rule.conditions do
-			conditionCard(panel, rule, i, conditionsGroup)
+		if #rule.conditions == 0 then
+			local emptyLabel = AceGUI:Create("Label")
+			emptyLabel:SetText("No conditions. Add one above.")
+			conditionsGroup:AddChild(emptyLabel)
+		else
+			for i = 1, #rule.conditions do
+				conditionCard(panel, rule, i, conditionsGroup)
+			end
 		end
 	else
 		card:SetBorderVisible(false)
@@ -378,6 +384,29 @@ end
 local function build(panel)
 	local rotation = OptionPanel.RotationFromPath(panel)
 	if not rotation then return end
+
+	local globalConditions = AceGUI:Create("TitleButtonGroup")
+	globalConditions:SetTitle("Global Conditions")
+	globalConditions:SetFullWidth(true)
+	globalConditions:SetLayout("Flow")
+	globalConditions:SetTitleButtons({
+		{ label = "Add condition", func = function()
+			Profile.addCondition(rotation)
+			conditionExpanded[rotation.conditions[#rotation.conditions]] = true
+			OptionPanel.Refresh(panel)
+		end },
+	})
+	panel:AddChild(globalConditions)
+
+	if #rotation.conditions == 0 then
+		local emptyLabel = AceGUI:Create("Label")
+		emptyLabel:SetText("No global conditions. Add one above.")
+		globalConditions:AddChild(emptyLabel)
+	else
+		for i = 1, #rotation.conditions do
+			conditionCard(panel, rotation, i, globalConditions)
+		end
+	end
 
 	-- Rules section: its title bar carries the "Add rule" button
 	local rulesSection = AceGUI:Create("TitleButtonGroup")
