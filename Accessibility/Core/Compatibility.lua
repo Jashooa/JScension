@@ -120,9 +120,10 @@ end
 -- targeting cursor, ConfirmGround resolves it at the unit's position.
 function Compatibility.Cast(spell, unit)
 	if unit == "player" then
-		return Compatibility.Call('CastSpellByName(%s, "player")', spell)
+		Compatibility.Call('CastSpellByName(%s, "player")', spell)
+	else
+		Compatibility.Call("CastSpellByName(%s)", spell)
 	end
-	Compatibility.Call("CastSpellByName(%s)", spell)
 	local isTargeting = Compatibility.Call("return SpellIsTargeting()")
 	if isTargeting then
 		Compatibility.ConfirmGround(unit)

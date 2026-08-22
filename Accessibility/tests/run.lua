@@ -62,6 +62,8 @@ fake.Compatibility = function(script)
 		if guid == "0xdead" then return nil end
 
 		return 0
+	elseif script:find("return SpellIsTargeting()", 1, true) then
+		return true, nil, nil
 	elseif script:find("Compatibility_LOS ", 1, true) then
 		return state.lineOfSight and 1 or 0
 	elseif script:find("Compatibility_PlaceGround ", 1, true) then
