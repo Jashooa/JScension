@@ -35,6 +35,10 @@ local jitterPending = {
 	guid = nil,
 	dueAt = nil,
 	window = nil,
+	retry = false,
+	retrySpell = nil,
+	retryUnit = nil,
+	retryGuid = nil,
 }
 
 local function clearJitter()
@@ -46,8 +50,16 @@ local function clearJitter()
 	jitterPending.window = nil
 end
 
-function Rotation.ClearJitter()
+local function clearPending()
 	clearJitter()
+	jitterPending.retry = false
+	jitterPending.retrySpell = nil
+	jitterPending.retryUnit = nil
+	jitterPending.retryGuid = nil
+end
+
+function Rotation.ClearJitter()
+	clearPending()
 end
 
 local function candidateGuid(rule)
@@ -69,6 +81,91 @@ local function armJitter(rule, guid, currentTime, window)
 	jitterPending.dueAt = currentTime + math.random() * window
 	jitterPending.window = window
 end
+local lastAttemptSpell
+local lastAttemptState
+local lastAttemptUnit
+local lastAttemptGuid
+local activeCastSpell
+
+local function normalizedSpell(spell)
+	return spell and Spell.stripRank(spell) or nil
+end
+
+local function sameSpell(first, second)
+	if not first or not second then return false end
+	return normalizedSpell(first) == normalizedSpell(second)
+end
+
+local function markImmediateRetry()
+	if not lastAttemptSpell then return end
+	local retrySpell = lastAttemptSpell
+	local retryUnit = lastAttemptUnit
+	local retryGuid = lastAttemptGuid
+	clearPending()
+	jitterPending.retry = true
+	jitterPending.retrySpell = retrySpell
+	jitterPending.retryUnit = retryUnit
+	jitterPending.retryGuid = retryGuid
+end
+
+local function retryMatches(rule, guid)
+	return jitterPending.retry
+		and sameSpell(jitterPending.retrySpell, rule.spell)
+		and jitterPending.retryUnit == (rule.unit or "target")
+		and jitterPending.retryGuid == guid
+end
+
+local function reconcileGcdAfterCancellation()
+	local probe = Profile.current().gcdProbeSpell
+	if probe and probe ~= "" then return end
+	if lastAttemptSpell then
+		local start, duration = Spell.cooldown(lastAttemptSpell)
+		if Cooldown.isGCD(start, duration) then
+			lastAttemptTime = start
+			return
+		end
+	end
+	lastAttemptTime = 0
+end
+
+function Rotation.OnCastStarted(spell)
+	activeCastSpell = normalizedSpell(spell)
+	if sameSpell(lastAttemptSpell, spell) then
+		lastAttemptState = "active"
+	end
+end
+
+function Rotation.OnCastSucceeded(spell)
+	if lastAttemptState == "queued"
+		and activeCastSpell
+		and sameSpell(activeCastSpell, spell)
+		and sameSpell(lastAttemptSpell, spell) then
+		return
+	end
+	if sameSpell(lastAttemptSpell, spell) then
+		lastAttemptState = "succeeded"
+		jitterPending.retry = false
+	end
+	if sameSpell(activeCastSpell, spell) then
+		activeCastSpell = nil
+	end
+end
+
+function Rotation.OnCastCancelled(spell)
+	local matchesAttempt = sameSpell(lastAttemptSpell, spell)
+	local matchesActive = sameSpell(activeCastSpell, spell)
+	if lastAttemptState == "queued" and matchesActive and matchesAttempt then
+		activeCastSpell = nil
+		return
+	end
+	if matchesAttempt and lastAttemptState ~= "succeeded" then
+		markImmediateRetry()
+		reconcileGcdAfterCancellation()
+		lastAttemptState = "cancelled"
+	end
+	if matchesActive then activeCastSpell = nil end
+end
+
 
 
 -- The result of the last emitted cast, for the status command.
@@ -148,7 +245,8 @@ local function evaluateRule(rule, currentTime)
 	if castName then castName = Spell.stripRank(castName) end
 	local refName = Spell.stripRank(rule.spell)
 	local antiSpamWindow = Profile.current().antiSpamWindow
-	if not (castMs and castMs > 0) and castName ~= refName then
+	local retry = retryMatches(rule, Unit.guid(unit))
+	if not retry and not (castMs and castMs > 0) and castName ~= refName then
 		local lastAttemptAt = lastCastAt[rule.spell]
 		if lastAttemptAt and (currentTime - lastAttemptAt) < antiSpamWindow then
 			return false, "anti-spam"
@@ -162,9 +260,15 @@ end
 -- gates. It stores the result for the status command.
 local function emitRule(rule, currentTime)
 	local unit = rule.unit or "target"
+	local currentCast = Cast.currentCast()
 
 	lastCastAt[rule.spell] = currentTime
 	lastAttemptTime = currentTime
+	lastAttemptSpell = rule.spell
+	lastAttemptState = currentCast and "queued" or "submitted"
+	lastAttemptUnit = unit
+	lastAttemptGuid = Unit.guid(unit)
+	activeCastSpell = currentCast and normalizedSpell(currentCast) or nil
 
 	local ok, value, err = Compatibility.Cast(rule.spell, unit)
 	return ok, value, err
@@ -183,7 +287,7 @@ local function selectNextRule(currentTime)
 end
 local function emitAndLog(rule, currentTime)
 	emitRule(rule, currentTime)
-	clearJitter()
+	clearPending()
 	local label = (rule.name and rule.name ~= "") and rule.name or rule.spell
 	Log.Write("cast", ("cast %s (rule %s)"):format(rule.spell, label))
 	return true
@@ -214,7 +318,7 @@ function Rotation.CastBest(automatic)
 	local currentTime = GetTime()
 
 	if not automatic then
-		clearJitter()
+		clearPending()
 		if Rotation.IsOnGCD(currentTime) then return false end
 		if not Rotation.InQueueWindow() then return false end
 		if Unit.isDeadOrGhost("player") then
@@ -249,27 +353,34 @@ function Rotation.CastBest(automatic)
 	end
 
 	if Unit.isDeadOrGhost("player") then
-		clearJitter()
+		clearPending()
 		Log.Write("cast", "player dead")
 		return false
 	end
 	if not Compatibility.IsCompatible() then
-		clearJitter()
+		clearPending()
 		Log.Write("cast", "not compatible")
 		return false
 	end
 
 	local rule = selectNextRule(currentTime)
 	if not rule then
-		clearJitter()
+		clearPending()
 		return false
 	end
 	local guid = candidateGuid(rule)
+	if jitterPending.retry then
+		if retryMatches(rule, guid) then
+			if Rotation.IsOnGCD(currentTime) or not Rotation.InQueueWindow() then return false end
+			return emitAndLog(rule, currentTime)
+		end
+		clearPending()
+	end
 	if jitterPending.window ~= jitterWindow or not sameJitterCandidate(rule, guid) then
 		armJitter(rule, guid, currentTime, jitterWindow)
 	end
-	if currentTime < jitterPending.dueAt then return false end
 
+	if currentTime < jitterPending.dueAt then return false end
 	local releaseRule = selectNextRule(currentTime)
 	if not releaseRule then
 		clearJitter()

@@ -41,7 +41,11 @@ function A:OnEnable()
 	self:RegisterEvent("ADDON_ACTION_BLOCKED", "OnActionBlocked")
 	self:RegisterEvent("ADDON_ACTION_FORBIDDEN", "OnActionBlocked")
 	self:RegisterEvent("SPELLS_CHANGED", "OnSpellsChanged")
-
+	self:RegisterEvent("UNIT_SPELLCAST_START", "OnSpellcastEvent")
+	self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnSpellcastEvent")
+	self:RegisterEvent("UNIT_SPELLCAST_FAILED", "OnSpellcastEvent")
+	self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED", "OnSpellcastEvent")
+	self:RegisterEvent("UNIT_SPELLCAST_STOP", "OnSpellcastEvent")
 	ns.RotationButton.Create(self.db.profile.button)
 	ns.Config.Setup()
 
@@ -77,6 +81,16 @@ end
 
 function A:OnSpellsChanged()
 	SpellPicker.Refresh()
+end
+function A:OnSpellcastEvent(event, unit, spell)
+	if unit ~= "player" then return end
+	if event == "UNIT_SPELLCAST_START" then
+		Rotation.OnCastStarted(spell)
+	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
+		Rotation.OnCastSucceeded(spell)
+	else
+		Rotation.OnCastCancelled(spell)
+	end
 end
 
 -- ---------------------------------------------------------------------------

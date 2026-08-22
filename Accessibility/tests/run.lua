@@ -927,8 +927,8 @@ local function resetRotation()
 	scenarioTime = scenarioTime + 1000
 	state.time = scenarioTime
 	state.secure = true
+	Rotation.ClearJitter()
 	prof().antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW
-	prof().jitterWindow = 0
 	setKnown({ "Fireball", "Renew", "probe" })
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
 	setSpell("Renew", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
@@ -1016,8 +1016,8 @@ resetRotation()
 prof().jitterWindow = 0.4
 clearScripts()
 local jitterStart = state.time
-ok("automatic jitter holds the first pulse", Rotation.CastBest(true) == false)
-eq("automatic jitter emits nothing while waiting", #scripts, 0)
+	ok("automatic jitter holds the first pulse", Rotation.CastBest(true) == false)
+	eq("automatic jitter emits nothing while waiting", #scripts, 0)
 state.time = jitterStart + 0.19
 ok("automatic jitter still holds before deadline", Rotation.CastBest(true) == false)
 state.time = jitterStart + 0.2
@@ -1051,6 +1051,18 @@ ok("gap jitter arms while casting", Rotation.CastBest(true) == false)
 state.time = gapStart + 0.25
 state.units.player.castingEndMs = nil
 ok("gap jitter emits after cast end", Rotation.CastBest(true) == true)
+-- A cancelled cast retries without a new jitter delay.
+resetRotation()
+prof().jitterWindow = 0.4
+clearScripts()
+local cancelledStart = state.time
+ok("cancel retry arms the original cast", Rotation.CastBest(true) == false)
+state.time = cancelledStart + 0.2
+ok("cancel retry emits the first cast", Rotation.CastBest(true) == true)
+Rotation.OnCastStarted("Fireball")
+Rotation.OnCastCancelled("Fireball")
+clearScripts()
+ok("cancelled cast retries without jitter", Rotation.CastBest(true) == true)
 math.random = originalRandom
 
 resetRotation()
