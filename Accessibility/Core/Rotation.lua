@@ -166,6 +166,21 @@ function Rotation.OnCastCancelled(spell)
 	end
 	if matchesActive then activeCastSpell = nil end
 end
+function Rotation.OnCastFailed(spell)
+	local matchesAttempt = sameSpell(lastAttemptSpell, spell)
+	local matchesActive = sameSpell(activeCastSpell, spell)
+	if lastAttemptState == "queued" and matchesActive and matchesAttempt then
+		activeCastSpell = nil
+		return
+	end
+	if matchesAttempt and lastAttemptState ~= "succeeded" then
+		clearPending()
+		reconcileGcdAfterCancellation()
+		lastAttemptState = "failed"
+	end
+	if matchesActive then activeCastSpell = nil end
+end
+
 
 
 

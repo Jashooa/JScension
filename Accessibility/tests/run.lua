@@ -1095,6 +1095,18 @@ Rotation.OnCastStarted("Fireball")
 Rotation.OnCastCancelled("Fireball")
 clearScripts()
 ok("cancelled cast retries without jitter", Rotation.CastBest(true) == true)
+resetRotation()
+prof().jitterWindow = 0.4
+clearScripts()
+local failedStart = state.time
+ok("failed cast arms normally", Rotation.CastBest(true) == false)
+state.time = failedStart + 0.2
+ok("failed cast emits once", Rotation.CastBest(true) == true)
+Rotation.OnCastStarted("Fireball")
+Rotation.OnCastFailed("Fireball")
+clearScripts()
+ok("failed cast does not retry immediately", Rotation.CastBest(true) == false)
+ok("failed cast emitted no immediate retry", not hasCastScript("Fireball"))
 math.random = originalRandom
 
 resetRotation()

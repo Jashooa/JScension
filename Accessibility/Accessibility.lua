@@ -88,6 +88,8 @@ function A:OnSpellcastEvent(event, unit, spell)
 		Rotation.OnCastStarted(spell)
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		Rotation.OnCastSucceeded(spell)
+	elseif event == "UNIT_SPELLCAST_FAILED" then
+		Rotation.OnCastFailed(spell)
 	else
 		Rotation.OnCastCancelled(spell)
 	end
