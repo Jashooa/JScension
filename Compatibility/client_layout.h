@@ -26,9 +26,7 @@
 #define CGUNIT_C__CAN_ASSIST             0x007293d0u
 #define CGUNIT_C__CAN_ATTACK             0x00729740u
 
-/* Movement and world */
-#define CGPLAYER_C__CLICK_TO_MOVE       0x00727400u
-#define CTM_BASE                        0x00ca11d8u
+/* World */
 #define TRACE_LINE                      0x007a3b70u
 
 /* Spell targeting */

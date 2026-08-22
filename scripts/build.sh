@@ -26,7 +26,6 @@ SHIM_SOURCES=(
     "$SOLUTION_DIR/Compatibility/trust_manifest.c"
     "$SOLUTION_DIR/Compatibility/command_dispatch.c"
     "$SOLUTION_DIR/Compatibility/command_parser.c"
-    "$SOLUTION_DIR/Compatibility/debug_commands.c"
     "$SOLUTION_DIR/Compatibility/window_lifecycle.c"
     "$SOLUTION_DIR/Compatibility/compatibility.def"
 )

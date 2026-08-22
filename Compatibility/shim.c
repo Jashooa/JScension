@@ -4,7 +4,7 @@
  * registered callback. The callback runs on the game window thread and delegates:
  *
  *   - client_layout: client addresses and layout validation
- *   - command_dispatch/debug_commands: internal native commands
+ *   - command_dispatch: internal native commands
  *   - secure_executor/lua_bridge: trusted script execution and result replay
  *   - trust_manifest: trusted owner selection
  *   - window_lifecycle: subclassing, registration messages, and keepalive timing
@@ -27,7 +27,6 @@
 #include "client_api.h"
 #include "lua_bridge.h"
 #include "command_dispatch.h"
-#include "debug_commands.h"
 #include "trust_manifest.h"
 #include "client_layout.h"
 #include "secure_executor.h"
@@ -159,14 +158,12 @@ static void __attribute__((noreturn)) fatal_exit(const char *message) {
 
 static int valid_manifest_entry(unsigned long entryAddress) {
     unsigned int nameLength;
-    unsigned int trustedFlag;
     unsigned int nameIndex;
     const char *name;
 
     if (IsBadReadPtr((void *)entryAddress, MANIFEST_ENTRY_SIZE)) return 0;
     nameLength = *(unsigned int *)(entryAddress + MANIFEST_NAME_LENGTH_OFFSET);
-    trustedFlag = *(unsigned int *)(entryAddress + MANIFEST_TRUSTED_FLAG_OFFSET);
-    if (nameLength > MAX_TRUSTED_NAME_LENGTH || trustedFlag > 1) return 0;
+    if (nameLength > MAX_TRUSTED_NAME_LENGTH) return 0;
     name = (nameLength <= SSO_INLINE_LENGTH)
         ? (const char *)entryAddress
         : *(const char **)entryAddress;
@@ -272,10 +269,6 @@ static int __cdecl Compatibility_body(unsigned int state) {
     const char *script = readLuaString(state, 1, &scriptLength);
     int commandResult = command_dispatch(
         state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSH_NUMBER);
-    if (commandResult >= 0) return commandResult;
-    commandResult = debug_command_dispatch(
-        state, script, scriptLength, (CommandPushNumberFunction)LUA_PUSH_NUMBER,
-        log_messagef);
     if (commandResult >= 0) return commandResult;
     secure_executor_run(script, scriptLength, g_owner_name);
     return lua_bridge_push_result(state);

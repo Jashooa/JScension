@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/script_helpers.sh"
 load_config
 
 for required_value in \
-    PREFIX COMPAT_DEPLOY_DIR COMPAT_EXE_NAME WINE GAME_PROC_PATTERN; do
+    PREFIX GAME_DIR COMPAT_DEPLOY_DIR COMPAT_EXE_NAME WINE; do
     require_config_value "$required_value"
 done
 require_executable "$WINE"
@@ -29,11 +29,14 @@ esac
 WIN_DIR="C:${COMPAT_DEPLOY_DIR#"$PREFIX/drive_c"}"
 WIN_DIR="${WIN_DIR//\//\\}"
 EXE="${WIN_DIR}\\${COMPAT_EXE_NAME}"
+GAME_DIR_NAME="${GAME_DIR##*/}"
+GAME_PROC_PATTERN="${GAME_DIR_NAME}.*Ascension[.]exe"
+
 
 if pgrep -f "$GAME_PROC_PATTERN" >/dev/null 2>&1; then
-    echo "game process found"
+    echo "game process found ($GAME_PROC_PATTERN)"
 else
-    echo "warning: no ascension-live game process found (injector will report 'game window not found')"
+    echo "warning: no $GAME_DIR_NAME game process found (injector will report 'game window not found')"
 fi
 
 echo "launching injector: $EXE"

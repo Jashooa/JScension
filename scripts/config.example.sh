@@ -44,5 +44,3 @@ COMPAT_BIN_DIR="$SOLUTION_DIR/bin"
 # Machine-specific: Wine binary used to run the injector.
 WINE="/path/to/your/wine"
 
-# Game process pattern used to detect the running client.
-GAME_PROC_PATTERN="ascension-live.*Ascension[.]exe"
