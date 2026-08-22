@@ -425,11 +425,13 @@ function Rotation.Simulate()
 		lines[1] = "no rules"
 		return lines
 	end
-	if not passesGlobalConditions(rotation) then
-		lines[1] = "blocked: global condition"
-		return lines
-	end
+	local globalPasses = passesGlobalConditions(rotation)
 	local currentTime = GetTime()
+	local firstRuleIndex = 1
+	if not globalPasses then
+		lines[1] = "global: blocked: global condition"
+		firstRuleIndex = 2
+	end
 	for i = 1, #rules do
 		local rule = rules[i]
 		local status
@@ -441,7 +443,7 @@ function Rotation.Simulate()
 			local passes, reason = evaluateRule(rule, currentTime)
 			status = passes and "would cast" or ("blocked: " .. (reason or "?"))
 		end
-		lines[#lines + 1] = ("%d. %s: %s"):format(i, rule.spell, status)
+		lines[firstRuleIndex + i - 1] = ("%d. %s: %s"):format(i, rule.spell, status)
 	end
 	return lines
 end

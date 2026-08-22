@@ -1185,6 +1185,20 @@ local simulationLines = Rotation.Simulate()
 ok("simulation reports passing rule", simulationLines[1]:find("would cast", 1, true) ~= nil)
 eq("simulation evaluates each condition once", simulationEvaluations, 1)
 Conditions.Registry.simulation_counter = previousCounter
+resetRotation()
+setRules({
+	{ spell = "Fireball", enabled = true, unit = "target", conditions = { { type = "unit_in_combat", unit = "player" } } },
+	{ spell = "Renew", enabled = true, unit = "target", conditions = {} },
+})
+Profile.activeRotation().conditions = { { type = "unit_in_combat", unit = "player" } }
+setSpell("Renew", { usable = false, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
+state.inCombat = false
+local globallyBlockedLines = Rotation.Simulate()
+	eq("simulation keeps all rules under global block", #globallyBlockedLines, 3)
+	ok("simulation reports global block", globallyBlockedLines[1]:find("global condition", 1, true) ~= nil)
+	ok("simulation reports first rule reason", globallyBlockedLines[2]:find("condition", 1, true) ~= nil)
+	ok("simulation reports second rule reason", globallyBlockedLines[3]:find("not usable", 1, true) ~= nil)
+Profile.activeRotation().conditions = {}
 
 
 -- spell queue window: casting normally blocks, but inside the window the
