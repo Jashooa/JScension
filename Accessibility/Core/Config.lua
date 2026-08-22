@@ -15,6 +15,11 @@ local Config = {}
 local AceConfig = LibStub("AceConfig-3.0")
 local AceConfigDialog = LibStub("AceConfigDialog-3.0")
 local AceConfigRegistry = LibStub("AceConfigRegistry-3.0")
+local DEFAULT_DIALOG_WIDTH = 700
+local DEFAULT_DIALOG_HEIGHT = 500
+local TARGET_DIALOG_WIDTH = 900
+local TARGET_DIALOG_HEIGHT = DEFAULT_DIALOG_HEIGHT * 1.5
+
 
 local Profile = ns.Profile
 assert(Profile, "load order: Core/Config before Profile")
@@ -143,6 +148,16 @@ function Config.BuildOptions()
 		},
 	}
 end
+local function ensureDialogSize()
+	local status = AceConfigDialog:GetStatusTable(ADDON_NAME)
+	if not status.width or status.width == DEFAULT_DIALOG_WIDTH then
+		status.width = TARGET_DIALOG_WIDTH
+	end
+	if not status.height or status.height == DEFAULT_DIALOG_HEIGHT then
+		status.height = TARGET_DIALOG_HEIGHT
+	end
+end
+
 
 -- ---------------------------------------------------------------------------
 -- registration
@@ -152,6 +167,7 @@ function Config.Setup()
 	if Config.setupDone then return end
 	Config.setupDone = true
 	AceConfig:RegisterOptionsTable(ADDON_NAME, Config.BuildOptions)
+	ensureDialogSize()
 	AceConfigDialog:AddToBlizOptions(ADDON_NAME, "Accessibility")
 end
 
