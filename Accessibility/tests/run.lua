@@ -15,6 +15,8 @@
 local state = {
 	time = 0,
 	secure = true,
+	mounted = false,
+	lineOfSight = true,
 	inCombat = false,
 	units = {},       -- unit -> { exists, dead, health, maxHealth, power, maxPower, hostile, speed, casting }
 	auras = {},       -- unit -> array of { kind, name, count, remaining, mine }
@@ -61,7 +63,7 @@ fake.Compatibility = function(script)
 
 		return 0
 	elseif script:find("Compatibility_LOS ", 1, true) then
-		return 1
+		return state.lineOfSight and 1 or 0
 	elseif script:find("Compatibility_PlaceGround ", 1, true) then
 		return 1
 	end
@@ -89,10 +91,19 @@ local function clearScripts()
 	for i = #scripts, 1, -1 do scripts[i] = nil end
 end
 
+local function hasCastScript(spell)
+	local prefix = 'CastSpellByName("' .. spell .. '"'
+	for i = 1, #scripts do
+		if scripts[i]:find(prefix, 1, true) then return true end
+	end
+	return false
+end
+
 fake.GetTime = function() return state.time end
 fake.UnitExists = function(u) local x = state.units[u]; return x and x.exists end
 fake.UnitGUID = function(u) local x = state.units[u]; return x and x.guid end
 fake.UnitIsDeadOrGhost = function(u) local x = state.units[u]; return x and x.dead end
+fake.IsMounted = function() return state.mounted end
 fake.UnitHealth = function(u) local x = state.units[u]; return x and x.health or 0 end
 fake.UnitHealthMax = function(u) local x = state.units[u]; return x and x.maxHealth or 0 end
 -- power fakes accept an optional powerType (0 mana, 1 rage, ...). A unit
@@ -441,6 +452,9 @@ do
 
 
 	clearScripts()
+	eq("LoS self result", Compatibility.LoS("player"), 1)
+	eq("LoS self does not invoke shim", #scripts, 0)
+	clearScripts()
 	Compatibility.ConfirmGround("target")
 	eq("ground position command", scripts[1], "Compatibility_Position 0x2222")
 	eq("ground placement command", scripts[2], "Compatibility_PlaceGround 4.500000 5.750000 6.250000")
@@ -564,7 +578,7 @@ end
 do
 	ok("Eval unknown type fails closed", Conditions.Eval({ type = "nope" }) == false)
 	local expectedTypes = {
-		"unit_exists", "unit_alive", "unit_name", "unit_is_enemy", "unit_is_friendly", "unit_hostile",
+		"unit_exists", "unit_alive", "unit_name", "unit_is_enemy", "unit_is_friendly", "unit_in_line_of_sight", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
 		"unit_moving",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
@@ -598,6 +612,13 @@ do
 	setUnit("target", { exists = true, dead = false, hostile = false, enemy = false, friendly = true, name = "Ally" })
 	ok("unit_is_friendly passes on friendly", Conditions.Eval({ type = "unit_is_friendly", unit = "target" }) == true)
 	ok("unit_is_enemy fails on friendly", Conditions.Eval({ type = "unit_is_enemy", unit = "target" }) == false)
+	setUnit("player", { exists = true, dead = false, guid = "0x1111" })
+	setUnit("target", { exists = true, dead = false, guid = "0x2222", friendly = true })
+	state.lineOfSight = true
+	ok("unit_in_line_of_sight passes", Conditions.Eval({ type = "unit_in_line_of_sight", unit = "target" }) == true)
+	state.lineOfSight = false
+	ok("unit_in_line_of_sight fails when blocked", Conditions.Eval({ type = "unit_in_line_of_sight", unit = "target" }) == false)
+	state.lineOfSight = true
 	setUnit("target", { exists = true, dead = true, hostile = true })
 	ok("unit_exists passes for dead unit", Conditions.Eval({ type = "unit_exists", unit = "target" }) == true)
 	ok("unit_alive fails for dead unit", Conditions.Eval({ type = "unit_alive", unit = "target" }) == false)
@@ -931,10 +952,8 @@ local function resetRotation()
 	prof().antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW
 	setKnown({ "Fireball", "Renew", "probe" })
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
-	setSpell("Renew", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
-	setSpell("probe", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
-	setUnit("player", { exists = true, dead = false })
-	setUnit("target", { exists = true, dead = false, hostile = true, health = 100, maxHealth = 100 })
+	setUnit("player", { exists = true, dead = false, guid = "0x1111" })
+	setUnit("target", { exists = true, dead = false, guid = "0x2222", hostile = true, health = 100, maxHealth = 100 })
 	setRules({ { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } })
 	Compatibility.Recheck()
 	clearScripts()
@@ -949,7 +968,7 @@ end
 
 resetRotation()
 ok("CastBest casts the passing rule", castOnce("Fireball") == true)
-ok("a cast script was emitted", #scripts >= 1 and scripts[1] == 'CastSpellByName("Fireball")')
+ok("a cast script was emitted", hasCastScript("Fireball"))
 resetRotation()
 setKnown({ "ChargeSpell" })
 setSpell("ChargeSpell", {
@@ -972,6 +991,19 @@ resetRotation()
 setUnit("player", { exists = true, dead = true })
 ok("dead player blocks the cast", Rotation.CastBest() == false)
 ok("log says player dead", Log.Dump(1)[1]:find("player dead", 1, true) ~= nil)
+resetRotation()
+state.mounted = true
+clearScripts()
+ok("mounted player blocks the cast", Rotation.CastBest() == false)
+ok("mounted gate emits no cast", not hasCastScript("Fireball"))
+state.mounted = false
+
+resetRotation()
+state.lineOfSight = false
+clearScripts()
+ok("blocked line of sight blocks the cast", Rotation.CastBest() == false)
+ok("line of sight gate emits no cast", not hasCastScript("Fireball"))
+state.lineOfSight = true
 
 resetRotation()
 prof().gcdProbeSpell = "probe"
@@ -1017,7 +1049,7 @@ prof().jitterWindow = 0.4
 clearScripts()
 local jitterStart = state.time
 	ok("automatic jitter holds the first pulse", Rotation.CastBest(true) == false)
-	eq("automatic jitter emits nothing while waiting", #scripts, 0)
+	ok("automatic jitter emits no cast while waiting", not hasCastScript("Fireball"))
 state.time = jitterStart + 0.19
 ok("automatic jitter still holds before deadline", Rotation.CastBest(true) == false)
 state.time = jitterStart + 0.2
@@ -1073,7 +1105,7 @@ setRules({
 state.inCombat = false
 clearScripts()
 ok("walk skips a blocked rule", Rotation.CastBest() == true)
-ok("walk cast the second rule", scripts[1] == 'CastSpellByName("Fireball")')
+ok("walk cast the second rule", hasCastScript("Fireball"))
 
 -- priority walk: the first passing rule wins, the walk stops
 resetRotation()
@@ -1083,8 +1115,8 @@ setRules({
 })
 clearScripts()
 ok("walk casts the first passing rule", Rotation.CastBest() == true)
-ok("only one cast was emitted", #scripts >= 1 and scripts[1] == 'CastSpellByName("Fireball")')
-ok("the first rule won", scripts[1] == 'CastSpellByName("Fireball")')
+ok("only one cast was emitted", hasCastScript("Fireball"))
+ok("the first rule won", hasCastScript("Fireball"))
 
 -- NextRule: the button icon must show the first PASSING rule, so a blocked
 -- first rule does not pin a stale icon
@@ -1135,25 +1167,25 @@ Conditions.Registry.simulation_counter = previousCounter
 -- reset value (scenarioTime) so the GCD gate is clear; endMs is set relative
 -- to it (endMs/1000 - state.time = remaining seconds).
 resetRotation()
-setUnit("player", { exists = true, dead = false, castingEndMs = (state.time + 4) * 1000 })
+setUnit("player", { exists = true, dead = false, guid = "0x1111", castingEndMs = (state.time + 4) * 1000 })
 ok("mid-cast outside queue window blocks", Rotation.CastBest() == false)
 
 resetRotation()
-setUnit("player", { exists = true, dead = false, castingEndMs = (state.time + 0.2) * 1000 })
+setUnit("player", { exists = true, dead = false, guid = "0x1111", castingEndMs = (state.time + 0.2) * 1000 })
 clearScripts()
 ok("mid-cast inside queue window casts", Rotation.CastBest() == true)
-eq("queue-window cast emitted", scripts[1], 'CastSpellByName("Fireball")')
+ok("queue-window cast emitted", hasCastScript("Fireball"))
 
 -- queueWindow = 0 disables the early send: casting always blocks
 resetRotation()
 prof().queueWindow = 0
-setUnit("player", { exists = true, dead = false, castingEndMs = (state.time + 0.2) * 1000 })
+setUnit("player", { exists = true, dead = false, guid = "0x1111", castingEndMs = (state.time + 0.2) * 1000 })
 ok("queueWindow 0 blocks any mid-cast", Rotation.CastBest() == false)
 prof().queueWindow = nil
 
 -- channeling follows the same window logic
 resetRotation()
-setUnit("player", { exists = true, dead = false, channelEndMs = (state.time + 0.2) * 1000 })
+setUnit("player", { exists = true, dead = false, guid = "0x1111", channelEndMs = (state.time + 0.2) * 1000 })
 clearScripts()
 ok("mid-channel inside queue window casts", Rotation.CastBest() == true)
 
@@ -1165,10 +1197,10 @@ local tq = state.time
 ok("cast-time spell first cast succeeds", Rotation.CastBest() == true)
 -- 1.6s into a 2s cast: inside the 0.4s queue window, past the GCD fallback
 state.time = tq + 1.6
-setUnit("player", { exists = true, dead = false, castingEndMs = (tq + 2.0) * 1000 })
+setUnit("player", { exists = true, dead = false, guid = "0x1111", castingEndMs = (tq + 2.0) * 1000 })
 clearScripts()
 ok("cast-time spell re-queues inside window (anti-spam bypassed)", Rotation.CastBest() == true)
-eq("re-queue emitted the same spell", scripts[1], 'CastSpellByName("Fireball")')
+ok("re-queue emitted the same spell", hasCastScript("Fireball"))
 
 -- an instant spell is still anti-spammed: 0.5s after casting it, blocked
 resetRotation()

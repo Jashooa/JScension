@@ -87,6 +87,17 @@ function ConditionDefinitions.Build(conditions, dependencies)
 			return Unit.isAlive(condition.unit) and Unit.isFriendly(condition.unit)
 		end,
 	})
+	register("unit_in_line_of_sight", {
+		label = "Unit in line of sight",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is in line of sight"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Compatibility.LoS(condition.unit) == 1
+		end,
+	})
+
 
 	register("unit_hostile", {
 		label = "Unit is attackable",
@@ -509,7 +520,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	local logicalOrder = {
-		"unit_exists", "unit_alive", "unit_name", "unit_is_enemy", "unit_is_friendly", "unit_hostile",
+		"unit_exists", "unit_alive", "unit_name", "unit_is_enemy", "unit_is_friendly", "unit_in_line_of_sight", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
 		"unit_moving",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",

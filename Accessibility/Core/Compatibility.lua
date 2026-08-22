@@ -166,6 +166,7 @@ end
 -- LoS returns true if there is a clear line of sight between the player and
 -- a unit, false if obstructed. Eye height is 2.1 * scale per end.
 function Compatibility.LoS(unit)
+	if unit == "player" then return 1 end
 	local px, py, pz = Compatibility.Position("player")
 	if not px then return end
 	local ux, uy, uz = Compatibility.Position(unit)

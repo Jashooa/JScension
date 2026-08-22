@@ -11,6 +11,10 @@ local Player = {}
 function Player.canAttack(unit)
 	return UnitCanAttack("player", unit) and true or false
 end
+-- isMounted returns true while the player is mounted.
+function Player.isMounted()
+	return IsMounted() and true or false
+end
 
 -- comboPoints returns the player's combo points on the unit, or nil when the
 -- unit is not a valid combo target.

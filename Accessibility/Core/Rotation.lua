@@ -17,10 +17,11 @@ local Cooldown = ns.Cooldown
 local Cast = ns.Cast
 local Spell = ns.Spell
 local Unit = ns.Unit
+local Player = ns.Player
 local Constants = ns.Constants
 local Log = ns.Log
 assert(Compatibility and Conditions and SpellPicker and Profile and Cooldown
-	and Cast and Spell and Unit and Constants and Log,
+	and Cast and Spell and Unit and Player and Constants and Log,
 	"load order: Core/Rotation before its dependencies")
 
 -- The anti-spam window spaces repeated no-cooldown instant casts. The
@@ -186,22 +187,48 @@ function Rotation.IsOnGCD(currentTime)
 	return (currentTime - lastAttemptTime) < Constants.GCD_DURATION
 end
 
--- evaluateRule runs the per-spell gates. The global-cooldown gate is checked
--- once before the walk, not here.
+local function passesTargetGates(unit, spell)
+	if unit == "player" then return true end
+	if not Unit.isAlive(unit) then return false, "target dead" end
+	if Spell.inRange(spell, unit) == false then return false, "out of range" end
+	local lineOfSight = Compatibility.LoS(unit)
+	if lineOfSight ~= 1 then return false, "line of sight" end
+	return true
+end
+
+local function passesConditions(rule)
+	local conditions = rule.conditions
+	if not conditions then return true end
+	for i = 1, #conditions do
+		if not Conditions.Eval(conditions[i]) then return false end
+	end
+	return true
+end
+
+local function passesAntiSpam(rule, unit, currentTime)
+	local castMs = Spell.castTime(rule.spell)
+	local castName = Cast.currentCast()
+	if castName then castName = Spell.stripRank(castName) end
+	local refName = Spell.stripRank(rule.spell)
+	local antiSpamWindow = Profile.current().antiSpamWindow
+	if retryMatches(rule, Unit.guid(unit)) then return true end
+	if (castMs and castMs > 0) or castName == refName then return true end
+	local lastAttemptAt = lastCastAt[rule.spell]
+	if lastAttemptAt and (currentTime - lastAttemptAt) < antiSpamWindow then
+		return false
+	end
+	return true
+end
+
+-- evaluateRule runs gates specific to one rule. Global GCD and queue-window
+-- gates are handled by CastBest after rule selection.
 local function evaluateRule(rule, currentTime)
 	local unit = rule.unit or "target"
+	if Player.isMounted() then return false, "mounted" end
+	local targetPasses, targetReason = passesTargetGates(unit, rule.spell)
+	if not targetPasses then return false, targetReason end
+	if not SpellPicker.IsKnown(rule.spell) then return false, "not known" end
 
-	-- gate 2: the target unit must exist and be alive (skip for self-cast)
-	if unit ~= "player" and not Unit.isAlive(unit) then
-		return false, "target dead"
-	end
-
-	-- gate 3: the spell must be known
-	if not SpellPicker.IsKnown(rule.spell) then
-		return false, "not known"
-	end
-
-	-- gate 4: the spell must be usable
 	local usable, noMana = Spell.usable(rule.spell)
 	if not usable then return false, "not usable" end
 	if noMana then return false, "no mana" end
@@ -209,50 +236,14 @@ local function evaluateRule(rule, currentTime)
 		return false, "no charges"
 	end
 
-	-- gate 5: the spell's own cooldown must be up. The global cooldown is
-	-- handled by the GCD gate, not here.
 	local start, duration = Spell.cooldown(rule.spell)
 	if Cooldown.isOwnCooldown(start, duration) then
-		-- a real cooldown is running: clear the anti-spam marker, the cooldown
-		-- gate already spaces this spell
 		lastCastAt[rule.spell] = nil
 		if currentTime < (start + duration) then return false, "on cooldown" end
 	end
 
-	-- gate 7: the target must be in range (skip for self-cast and
-	-- ground-targeted spells which have no unit-based range check)
-	if unit ~= "player" then
-		local inRange = Spell.inRange(rule.spell, unit)
-		if inRange == false then return false, "out of range" end
-	end
-
-	-- gate 8: every condition must pass
-	local conditions = rule.conditions
-	if conditions then
-		for i = 1, #conditions do
-			if not Conditions.Eval(conditions[i]) then return false, "condition" end
-		end
-	end
-
-	-- gate 9: anti-spam for no-cooldown spells. A spell with a cast time is
-	-- already spaced by its own cast, so queueing it early inside the queue
-	-- window is safe and desired; the 2.5s window is longer than most casts
-	-- and would otherwise block the re-send, breaking the queue. Anti-spam
-	-- therefore only gates instant spells, and never a re-send of the spell
-	-- currently being cast or channelled (that is a queue, not spam).
-	local castMs = Spell.castTime(rule.spell)
-	local castName = Cast.currentCast()
-	if castName then castName = Spell.stripRank(castName) end
-	local refName = Spell.stripRank(rule.spell)
-	local antiSpamWindow = Profile.current().antiSpamWindow
-	local retry = retryMatches(rule, Unit.guid(unit))
-	if not retry and not (castMs and castMs > 0) and castName ~= refName then
-		local lastAttemptAt = lastCastAt[rule.spell]
-		if lastAttemptAt and (currentTime - lastAttemptAt) < antiSpamWindow then
-			return false, "anti-spam"
-		end
-	end
-
+	if not passesConditions(rule) then return false, "condition" end
+	if not passesAntiSpam(rule, unit, currentTime) then return false, "anti-spam" end
 	return true
 end
 

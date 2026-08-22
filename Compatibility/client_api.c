@@ -171,7 +171,7 @@ int client_trace_line_of_sight(ClientWorldPosition start, ClientWorldPosition en
     float endCoordinates[3] = { end.x, end.y, end.z + EYE_HEIGHT_PER_SCALE * endScale };
     float traceHitCoordinates[3] = { 0.0f, 0.0f, 0.0f };
     float traceDistance = 1.0f;
-    return traceLine(startCoordinates, endCoordinates, traceHitCoordinates, &traceDistance, LINE_OF_SIGHT_FLAGS, 0) != 0;
+    return traceLine(startCoordinates, endCoordinates, traceHitCoordinates, &traceDistance, LINE_OF_SIGHT_FLAGS, 0) == 0;
 }
 
 int client_handle_terrain_click(const ClientTerrainClick *terrainClick) {

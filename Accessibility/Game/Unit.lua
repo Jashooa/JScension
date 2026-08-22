@@ -19,6 +19,7 @@ function Unit.isDeadOrGhost(unit)
 	return UnitIsDeadOrGhost(unit) and true or false
 end
 
+
 -- exists returns true when the unit exists.
 function Unit.exists(unit)
 	return UnitExists(unit) and true or false
