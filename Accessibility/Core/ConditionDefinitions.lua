@@ -55,25 +55,36 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	register("unit_target_type", {
-		label = "Unit target type",
-		fields = { { key = "unit", type = "unit" }, { key = "value", type = "target_type" } },
+	register("unit_name", {
+		label = "Unit name",
+		fields = { { key = "unit", type = "unit" }, { key = "value", type = "string" } },
 		describe = function(condition)
-			return ("%s is %s"):format(condition.unit or "?", condition.value or "?")
+			return ("%s name is %s"):format(condition.unit or "?", condition.value or "?")
 		end,
 		eval = function(condition)
-			local unit = condition.unit
-			local want = condition.value
-			if want == "any" then
-				return Unit.isAlive(unit)
-			elseif want == "player" then
-				return unit == "player"
-			elseif want == "enemy" then
-				return Unit.isAlive(unit) and Player.canAttack(unit)
-			elseif want == "friendly" then
-				return Unit.isAlive(unit) and not Player.canAttack(unit)
-			end
-			return false
+			return Unit.name(condition.unit) == condition.value
+		end,
+	})
+
+	register("unit_is_enemy", {
+		label = "Unit is an enemy",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is an enemy"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Unit.isAlive(condition.unit) and Unit.isEnemy(condition.unit)
+		end,
+	})
+
+	register("unit_is_friendly", {
+		label = "Unit is friendly",
+		fields = { { key = "unit", type = "unit" } },
+		describe = function(condition)
+			return ("%s is friendly"):format(condition.unit or "?")
+		end,
+		eval = function(condition)
+			return Unit.isAlive(condition.unit) and Unit.isFriendly(condition.unit)
 		end,
 	})
 
@@ -498,7 +509,7 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	})
 
 	local logicalOrder = {
-		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
+		"unit_exists", "unit_alive", "unit_name", "unit_is_enemy", "unit_is_friendly", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
 		"unit_moving",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",

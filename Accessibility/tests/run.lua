@@ -111,6 +111,10 @@ fake.UnitPowerMax = function(u, t)
 	return x.maxPower or 0
 end
 fake.UnitCanAttack = function(_, u) local x = state.units[u]; return x and x.hostile end
+fake.UnitName = function(u) local x = state.units[u]; return x and x.name end
+fake.UnitIsEnemy = function(_, u) local x = state.units[u]; return x and x.enemy end
+fake.UnitIsFriendly = function(_, u) local x = state.units[u]; return x and x.friendly end
+
 -- UnitCastingInfo/UnitChannelInfo return (name, subText, text, texture,
 -- startTime, endTime, ...) in this client. The unit table may set
 -- castingEndMs / channelEndMs to simulate a cast and castingSpell to name
@@ -232,7 +236,10 @@ end
 
 fake.UnitBuff = function(u, i) return auraAt(u, "buff", i) end
 fake.UnitDebuff = function(u, i) return auraAt(u, "debuff", i) end
-fake.UnitName = function() return "TestMage" end
+fake.UnitName = function(u)
+	local x = state.units[u]
+	return (x and x.name) or "TestMage"
+end
 
 -- ---------------------------------------------------------------------------
 -- module loader
@@ -530,7 +537,7 @@ do
 	eq("rule enabled coerced", r1.enabled, false)
 	eq("rule unit kept (no whitelist)", r1.unit, "banana")
 	eq("condition count (unknown dropped)", #r1.conditions, 1)
-	eq("condition type kept", r1.conditions[1].type, "unit_target_type")
+	eq("condition type migrated", r1.conditions[1].type, "unit_is_enemy")
 
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
@@ -550,7 +557,7 @@ end
 do
 	ok("Eval unknown type fails closed", Conditions.Eval({ type = "nope" }) == false)
 	local expectedTypes = {
-		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
+		"unit_exists", "unit_alive", "unit_name", "unit_is_enemy", "unit_is_friendly", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
 		"unit_moving",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
@@ -576,10 +583,14 @@ do
 	ok("condition registry order is stable and unique", orderedTypes)
 	ok("Eval non-table fails closed", Conditions.Eval("x") == false)
 
-	-- target_type enemy
-	setUnit("target", { exists = true, dead = false, hostile = true })
-	ok("unit_target_type enemy passes on hostile", Conditions.Eval({ type = "unit_target_type", value = "enemy", unit = "target" }) == true)
-	ok("unit_target_type friendly fails on hostile", Conditions.Eval({ type = "unit_target_type", value = "friendly", unit = "target" }) == false)
+	-- unit_name and explicit relationship conditions
+	setUnit("target", { exists = true, dead = false, hostile = true, enemy = true, friendly = false, name = "Enemy" })
+	ok("unit_name matches", Conditions.Eval({ type = "unit_name", unit = "target", value = "Enemy" }) == true)
+	ok("unit_is_enemy passes on hostile", Conditions.Eval({ type = "unit_is_enemy", unit = "target" }) == true)
+	ok("unit_is_friendly fails on hostile", Conditions.Eval({ type = "unit_is_friendly", unit = "target" }) == false)
+	setUnit("target", { exists = true, dead = false, hostile = false, enemy = false, friendly = true, name = "Ally" })
+	ok("unit_is_friendly passes on friendly", Conditions.Eval({ type = "unit_is_friendly", unit = "target" }) == true)
+	ok("unit_is_enemy fails on friendly", Conditions.Eval({ type = "unit_is_enemy", unit = "target" }) == false)
 	setUnit("target", { exists = true, dead = true, hostile = true })
 	ok("unit_exists passes for dead unit", Conditions.Eval({ type = "unit_exists", unit = "target" }) == true)
 	ok("unit_alive fails for dead unit", Conditions.Eval({ type = "unit_alive", unit = "target" }) == false)
@@ -681,14 +692,23 @@ do
 	ok("legacy power_pct migrates", legacyPower ~= nil and legacyPower.type == "unit_power_percent" and legacyPower.value == 60)
 
 	-- legacy keys also evaluate without a sanitize pass (fresh rotation data)
-	setUnit("target", { exists = true, dead = false, health = 30, maxHealth = 100, hostile = true })
+	setUnit("target", { exists = true, dead = false, health = 30, maxHealth = 100, hostile = true, enemy = true })
 	ok("legacy health_pct evals", Conditions.Eval({ type = "health_pct", unit = "target", op = "<", value = 50 }) == true)
 	ok("ResolveType maps legacy key", Conditions.ResolveType("health_pct") == "unit_health_percent")
 	ok("ResolveType passes current key", Conditions.ResolveType("unit_health_percent") == "unit_health_percent")
 
-	-- the unit_/player_/spell_ rename maps every old key to its new name
-	ok("rename: target_type -> unit_target_type", Conditions.ResolveType("target_type") == "unit_target_type")
-	ok("rename: moving -> unit_moving", Conditions.ResolveType("moving") == "unit_moving")
+	-- target_type condition values migrate to explicit condition types
+	local legacyEnemy = Conditions.Sanitize({ type = "unit_target_type", unit = "target", value = "enemy" })
+	local legacyFriendly = Conditions.Sanitize({ type = "target_type", unit = "target", value = "friendly" })
+	local legacyAny = Conditions.Sanitize({ type = "unit_target_type", unit = "target", value = "any" })
+	local legacyPlayer = Conditions.Sanitize({ type = "target_type", unit = "target", value = "player" })
+	ok("target_type enemy migrates", legacyEnemy ~= nil and legacyEnemy.type == "unit_is_enemy" and legacyEnemy.value == nil)
+	ok("target_type friendly migrates", legacyFriendly ~= nil and legacyFriendly.type == "unit_is_friendly" and legacyFriendly.value == nil)
+	ok("target_type any migrates", legacyAny ~= nil and legacyAny.type == "unit_alive" and legacyAny.value == nil)
+	ok("target_type player migrates", legacyPlayer ~= nil and legacyPlayer.type == "unit_is_player" and legacyPlayer.value == nil)
+	ok("target_type legacy evals", Conditions.Eval({
+		type = "unit_target_type", unit = "target", value = "enemy"
+	}) == true)
 	ok("rename: in_combat -> unit_in_combat", Conditions.ResolveType("in_combat") == "unit_in_combat")
 	ok("rename: range -> unit_spell_range", Conditions.ResolveType("range") == "unit_spell_range")
 	ok("rename: cooldown_remaining -> spell_cooldown_remaining", Conditions.ResolveType("cooldown_remaining") == "spell_cooldown_remaining")
@@ -1220,7 +1240,7 @@ do
 	eq("newRotation owns rules", #rotation.rules, 0)
 	eq("newRule default spell", rule.spell, "")
 	eq("newRule default enabled", rule.enabled, true)
-	eq("newCondition default type", condition.type, "unit_target_type")
+	eq("newCondition default type", condition.type, "unit_exists")
 	eq("newCondition default enabled", condition.enabled, true)
 	eq("newCondition default negated", condition.negated, false)
 
@@ -1354,14 +1374,14 @@ do
 	local rotation = { name = "R", rules = { { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } } }
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends default", #rotation.rules[1].conditions, 1)
-	eq("addCondition default type", rotation.rules[1].conditions[1].type, "unit_target_type")
+	eq("addCondition default type", rotation.rules[1].conditions[1].type, "unit_exists")
 	eq("addCondition default value (unset)", rotation.rules[1].conditions[1].value, nil)
 
 	Profile.addCondition(rotation.rules[1])
 	eq("addCondition appends second", #rotation.rules[1].conditions, 2)
 	Profile.deleteCondition(rotation.rules[1], 1)
 	eq("deleteCondition removes first", #rotation.rules[1].conditions, 1)
-	eq("deleteCondition keeps second", rotation.rules[1].conditions[1].type, "unit_target_type")
+	eq("deleteCondition keeps second", rotation.rules[1].conditions[1].type, "unit_exists")
 	Profile.deleteCondition(rotation.rules[1], 1)
 	eq("deleteCondition empties", #rotation.rules[1].conditions, 0)
 end

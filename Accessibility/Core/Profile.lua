@@ -27,7 +27,7 @@ function Profile.newRule()
 end
 
 function Profile.newCondition()
-	return { type = "unit_target_type", enabled = true, negated = false }
+	return { type = "unit_exists", enabled = true, negated = false }
 end
 
 -- ---------------------------------------------------------------------------

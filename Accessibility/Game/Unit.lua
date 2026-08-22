@@ -27,6 +27,23 @@ end
 function Unit.guid(unit)
 	return UnitGUID(unit)
 end
+-- name returns the unit's current name, or nil when unavailable.
+function Unit.name(unit)
+	return UnitName(unit)
+end
+
+-- isEnemy returns true when the player can attack the unit according to the
+-- client's relationship API.
+function Unit.isEnemy(unit)
+	return UnitIsEnemy("player", unit) and true or false
+end
+
+-- isFriendly returns true when the client considers the unit friendly to the
+-- player. Neutral units are not friendly.
+function Unit.isFriendly(unit)
+	return UnitIsFriendly("player", unit) and true or false
+end
+
 
 -- distance returns the 3D distance between two units, or nil when either
 -- position is unavailable.

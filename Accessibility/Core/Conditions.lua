@@ -60,7 +60,6 @@ local order = {}
 local legacyType = {
 	health_pct = "unit_health_percent",
 	power_pct = "unit_power_percent",
-	target_type = "unit_target_type",
 	health_percent = "unit_health_percent",
 	power_percent = "unit_power_percent",
 	aura_present = "unit_aura_present",
@@ -89,6 +88,22 @@ local inverseType = {
 	standing_still = "unit_moving",
 	unit_standing_still = "unit_moving",
 }
+local targetTypeReplacement = {
+	any = "unit_alive",
+	enemy = "unit_is_enemy",
+	friendly = "unit_is_friendly",
+	player = "unit_is_player",
+}
+
+local function migrateTargetTypeCondition(condition)
+	if type(condition) ~= "table" then return end
+	if condition.type ~= "target_type" and condition.type ~= "unit_target_type" then return end
+	local replacement = targetTypeReplacement[condition.value]
+	if not replacement then return end
+	condition.type = replacement
+	condition.value = nil
+end
+
 
 local function migrateInverseCondition(condition)
 	if type(condition) ~= "table" then return end
@@ -106,6 +121,7 @@ function Conditions.ResolveType(key)
 	return legacyType[key] or key
 end
 local function resolveConditionType(condition)
+	migrateTargetTypeCondition(condition)
 	migrateInverseCondition(condition)
 	if type(condition) == "table" and condition.type == "unit_range" and condition.spell ~= nil then
 		return "unit_spell_range"
@@ -176,6 +192,7 @@ end
 -- when the type is not known.
 function Conditions.Sanitize(condition)
 	if type(condition) ~= "table" then return nil end
+	migrateTargetTypeCondition(condition)
 	migrateInverseCondition(condition)
 	local conditionType = condition.type
 	if conditionType == "unit_range" and condition.spell ~= nil then
