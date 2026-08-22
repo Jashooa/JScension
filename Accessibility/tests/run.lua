@@ -1321,6 +1321,12 @@ do
 	eq("moveRule shifts middle", rotation.rules[1].spell, "Two")
 	ok("moveRule clamps low", (function() Profile.moveRule(rotation, 1, 0); return rotation.rules[1].spell == "Two" end)())
 	ok("moveRule clamps high", (function() Profile.moveRule(rotation, 1, 99); return rotation.rules[3].spell == "One" end)())
+	local conditionRule = { conditions = { { type = "unit_exists" }, { type = "unit_alive" }, { type = "unit_moving" } } }
+	Profile.moveCondition(conditionRule, 1, 3)
+	eq("moveCondition reorders", conditionRule.conditions[3].type, "unit_exists")
+	eq("moveCondition shifts middle", conditionRule.conditions[1].type, "unit_alive")
+	ok("moveCondition clamps low", (function() Profile.moveCondition(conditionRule, 1, 0); return conditionRule.conditions[1].type == "unit_alive" end)())
+	ok("moveCondition clamps high", (function() Profile.moveCondition(conditionRule, 1, 99); return conditionRule.conditions[3].type == "unit_exists" end)())
 end
 
 -- ---------------------------------------------------------------------------

@@ -240,6 +240,14 @@ local function conditionCard(panel, rule, condIndex, container)
 			conditionExpanded[condition] = not conditionExpanded[condition]
 			OptionPanel.Refresh(panel)
 		end },
+		{ label = "▲", disabled = condIndex <= 1, func = function()
+			Profile.moveCondition(rule, condIndex, condIndex - 1)
+			OptionPanel.Refresh(panel)
+		end },
+		{ label = "▼", disabled = condIndex >= #rule.conditions, func = function()
+			Profile.moveCondition(rule, condIndex, condIndex + 1)
+			OptionPanel.Refresh(panel)
+		end },
 		{ label = "Delete", func = function()
 			Profile.deleteCondition(rule, condIndex)
 			conditionExpanded[condition] = nil

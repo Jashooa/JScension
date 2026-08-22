@@ -363,6 +363,16 @@ function Profile.deleteCondition(rule, index)
 	if index < 1 or index > #rule.conditions then return end
 	table.remove(rule.conditions, index)
 end
+-- moveCondition reorders a condition within a rule.
+function Profile.moveCondition(rule, from, to)
+	local conditions = rule.conditions
+	if to < 1 or to > #conditions or from < 1 or from > #conditions or from == to then
+		return
+	end
+	local condition = table.remove(conditions, from)
+	table.insert(conditions, to, condition)
+end
+
 
 -- moveRule reorders a rule within its rotation.
 function Profile.moveRule(rotation, from, to)
