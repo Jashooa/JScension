@@ -150,17 +150,6 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	register("unit_standing_still", {
-		label = "Unit is standing still",
-		fields = { { key = "unit", type = "unit" } },
-		describe = function(condition)
-			return ("%s is standing still"):format(condition.unit or "?")
-		end,
-		eval = function(condition)
-			local speed = Unit.speed(condition.unit)
-			return not speed or speed == 0
-		end,
-	})
 
 
 
@@ -236,17 +225,6 @@ function ConditionDefinitions.Build(conditions, dependencies)
 		end,
 	})
 
-	register("unit_aura_missing", {
-		label = "Unit is missing aura",
-		fields = { { key = "unit", type = "unit" }, { key = "aura", type = "string" }, { key = "kind", type = "kind" }, { key = "mine", type = "bool" } },
-		optional = { mine = true },
-		describe = function(condition)
-			return ("%s is missing %s"):format(condition.unit or "?", condition.aura or "?")
-		end,
-		eval = function(condition)
-			return Aura.find(condition.unit, condition.aura, condition.kind, condition.mine) == nil
-		end,
-	})
 
 	register("unit_aura_stacks", {
 		label = "Unit aura stacks",
@@ -522,9 +500,9 @@ function ConditionDefinitions.Build(conditions, dependencies)
 	local logicalOrder = {
 		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
-		"unit_moving", "unit_standing_still",
+		"unit_moving",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
-		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
+		"unit_aura_present", "unit_aura_stacks", "unit_aura_remains",
 		"unit_casting", "unit_casting_spell", "unit_cast_interruptible",
 		"unit_spell_range", "unit_range", "unit_nearby_count",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",

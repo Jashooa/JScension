@@ -64,12 +64,14 @@ local legacyType = {
 	health_percent = "unit_health_percent",
 	power_percent = "unit_power_percent",
 	aura_present = "unit_aura_present",
-	aura_missing = "unit_aura_missing",
+	aura_missing = "unit_aura_present",
+	unit_aura_missing = "unit_aura_present",
 	aura_stacks = "unit_aura_stacks",
 	aura_remains = "unit_aura_remains",
 	cooldown_remaining = "spell_cooldown_remaining",
 	moving = "unit_moving",
-	standing_still = "unit_standing_still",
+	standing_still = "unit_moving",
+	unit_standing_still = "unit_moving",
 	in_combat = "unit_in_combat",
 	range = "unit_spell_range",
 	combo_points = "player_combo_points",
@@ -81,6 +83,21 @@ local legacyType = {
 	unit_is_tanking = "player_is_tanking_unit",
 }
 
+local inverseType = {
+	aura_missing = "unit_aura_present",
+	unit_aura_missing = "unit_aura_present",
+	standing_still = "unit_moving",
+	unit_standing_still = "unit_moving",
+}
+
+local function migrateInverseCondition(condition)
+	if type(condition) ~= "table" then return end
+	local replacement = inverseType[condition.type]
+	if not replacement then return end
+	condition.type = replacement
+	condition.negated = condition.negated ~= true
+end
+
 -- ResolveType maps a stored type key to its current name, migrating legacy
 -- keys (health_pct -> health_percent). Every lookup path uses it so a saved
 -- condition from before a rename keeps working without waiting for a profile
@@ -89,6 +106,7 @@ function Conditions.ResolveType(key)
 	return legacyType[key] or key
 end
 local function resolveConditionType(condition)
+	migrateInverseCondition(condition)
 	if type(condition) == "table" and condition.type == "unit_range" and condition.spell ~= nil then
 		return "unit_spell_range"
 	end
@@ -158,6 +176,7 @@ end
 -- when the type is not known.
 function Conditions.Sanitize(condition)
 	if type(condition) ~= "table" then return nil end
+	migrateInverseCondition(condition)
 	local conditionType = condition.type
 	if conditionType == "unit_range" and condition.spell ~= nil then
 		conditionType = "unit_spell_range"

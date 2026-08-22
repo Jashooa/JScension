@@ -552,9 +552,9 @@ do
 	local expectedTypes = {
 		"unit_exists", "unit_alive", "unit_target_type", "unit_hostile",
 		"unit_is_player", "unit_classification", "unit_level", "unit_in_combat",
-		"unit_moving", "unit_standing_still",
+		"unit_moving",
 		"unit_health_percent", "unit_health", "unit_power_percent", "unit_power",
-		"unit_aura_present", "unit_aura_missing", "unit_aura_stacks", "unit_aura_remains",
+		"unit_aura_present", "unit_aura_stacks", "unit_aura_remains",
 		"unit_casting", "unit_casting_spell", "unit_cast_interruptible", "unit_spell_range", "unit_range", "unit_nearby_count",
 		"spell_ready", "spell_usable", "spell_cooldown_remaining",
 		"player_combo_points", "player_shapeshift_form",
@@ -652,9 +652,15 @@ do
 		Conditions.Describe({ type = "unit_health_percent", unit = "target", op = "<", value = 50, negated = true }),
 		"not target health < 50%")
 
-	-- the "Aura is not up" condition was renamed to "Aura missing", then
-	-- the unit_ prefix scheme renamed the key; the label names the subject
-	eq("aura_missing label names unit", Conditions.Registry.unit_aura_missing.label, "Unit is missing aura")
+	-- Removed inverse conditions migrate to their positive type with negation.
+	local missingClean = Conditions.Sanitize({
+		type = "unit_aura_missing", unit = "target", aura = "Moonfire", kind = "debuff"
+	})
+	ok("aura_missing migrates to negated aura_present",
+		missingClean ~= nil and missingClean.type == "unit_aura_present" and missingClean.negated == true)
+	local stillClean = Conditions.Sanitize({ type = "unit_standing_still", unit = "player" })
+	ok("standing_still migrates to negated moving",
+		stillClean ~= nil and stillClean.type == "unit_moving" and stillClean.negated == true)
 
 	-- sanitize drops unknown fields
 	local clean = Conditions.Sanitize({ type = "unit_health_percent", unit = "target", op = "<", value = 30, junk = "x" })
