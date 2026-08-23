@@ -301,6 +301,11 @@ local function targetRuleCard(panel, rule, targetIndex, container)
 	card:SetTitle(targetRuleTitle(targetRule))
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
+	local function updateCardState()
+		card:SetTitle(targetRuleTitle(targetRule))
+		setCardColor(card, Targeting.IsComplete(targetRule), true)
+	end
+	updateCardState()
 	card:SetTitleButtons({
 		{ label = targetRuleExpanded[targetRule] and "−" or "+", func = function()
 			targetRuleExpanded[targetRule] = not targetRuleExpanded[targetRule]
@@ -335,17 +340,17 @@ local function targetRuleCard(panel, rule, targetIndex, container)
 		if targetRule.type == "fixed" then
 			controls:AddChild(Fields.Dropdown("Fixed unit", Conditions.Units, targetRule.unit, function(value)
 				Profile.setTargetRuleUnit(targetRule, value)
-				OptionPanel.Refresh(panel)
+				updateCardState()
 			end))
 		else
 			controls:AddChild(Fields.Dropdown("Priority", targetPriorityLabels, targetRule.priority, function(value)
 				Profile.setTargetRulePriority(targetRule, value)
-				OptionPanel.Refresh(panel)
+				updateCardState()
 			end))
 			controls:AddChild(Fields.Slider("Maximum distance", 1, 100, 1,
 				targetRule.maxDistance, function(value)
 					Profile.setTargetRuleMaxDistance(targetRule, value)
-					OptionPanel.Refresh(panel)
+					updateCardState()
 				end))
 		end
 		setCardColor(card, Targeting.IsComplete(targetRule), true)
