@@ -88,6 +88,20 @@ local function armJitter(selection, guid, currentTime, window)
 	jitterPending.dueAt = currentTime + math.random() * window
 	jitterPending.window = window
 end
+local playerDeadLogged = false
+
+local function playerIsDead()
+	local dead = Unit.isDeadOrGhost("player")
+	if dead then
+		if not playerDeadLogged then
+			Log.Write("cast", "player dead")
+			playerDeadLogged = true
+		end
+	else
+		playerDeadLogged = false
+	end
+	return dead
+end
 local lastAttemptSpell
 local lastAttemptState
 local lastAttemptUnit
@@ -395,14 +409,12 @@ end
 -- CastBest casts the first rule that passes every gate. It returns true when
 function Rotation.CastBest(automatic)
 	local currentTime = GetTime()
+	local playerDead = playerIsDead()
 
 	if not automatic then
 		clearPending()
 		if Rotation.IsOnGCD(currentTime) or not Rotation.InQueueWindow() then return false end
-		if Unit.isDeadOrGhost("player") then
-			Log.Write("cast", "player dead")
-			return false
-		end
+		if playerDead then return false end
 		if not Compatibility.IsCompatible() then
 			Log.Write("cast", "not compatible")
 			return false
@@ -416,10 +428,7 @@ function Rotation.CastBest(automatic)
 	if jitterWindow <= 0 then
 		clearJitter()
 		if Rotation.IsOnGCD(currentTime) or not Rotation.InQueueWindow() then return false end
-		if Unit.isDeadOrGhost("player") then
-			Log.Write("cast", "player dead")
-			return false
-		end
+		if playerDead then return false end
 		if not Compatibility.IsCompatible() then
 			Log.Write("cast", "not compatible")
 			return false
@@ -429,9 +438,8 @@ function Rotation.CastBest(automatic)
 		return emitAndLog(selection, currentTime)
 	end
 
-	if Unit.isDeadOrGhost("player") then
+	if playerDead then
 		clearPending()
-		Log.Write("cast", "player dead")
 		return false
 	end
 	if not Compatibility.IsCompatible() then
