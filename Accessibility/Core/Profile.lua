@@ -92,6 +92,21 @@ assert(asBool and asString and asNumber and Constants, "load order: Core/Profile
 -- rule sanitization
 -- ---------------------------------------------------------------------------
 
+local function sanitizeConditions(source)
+	if type(source) ~= "table" then return {} end
+	if type(ns.Conditions) ~= "table" or
+		type(ns.Conditions.Sanitize) ~= "function" or
+		type(ns.Conditions.Registry) ~= "table" then
+		return source
+	end
+	local clean = {}
+	for i = 1, #source do
+		local condition = ns.Conditions.Sanitize(source[i])
+		if condition then clean[#clean + 1] = condition end
+	end
+	return clean
+end
+
 local function sanitizeTargetRule(raw)
 	if type(raw) ~= "table" then return nil end
 	local targetType = asString(raw.type, raw.unit ~= nil and "fixed" or "")
@@ -127,7 +142,6 @@ local function sanitizeTargetRules(rule)
 	end
 	return targetRules
 end
-
 -- sanitizeRule repairs one rule. It returns a clean table, or nil when the
 -- rule has no spell. Each condition goes through the registry sanitizer, so an
 -- unknown condition type is dropped, not kept.
@@ -140,14 +154,8 @@ local function sanitizeRule(rule)
 		spell = spell,
 		enabled = asBool(rule.enabled, true),
 		targetRules = sanitizeTargetRules(rule),
-		conditions = {},
+		conditions = sanitizeConditions(rule.conditions),
 	}
-	if type(rule.conditions) == "table" then
-		for i = 1, #rule.conditions do
-			local condition = ns.Conditions and ns.Conditions.Sanitize(rule.conditions[i]) or nil
-			if condition then clean.conditions[#clean.conditions + 1] = condition end
-		end
-	end
 	return clean
 end
 
@@ -160,14 +168,7 @@ local function sanitizeRotation(rotation)
 	if name == "" then name = "Rotation" end
 
 	local clean = Profile.newRotation(name)
-	if type(rotation.conditions) == "table" then
-		for i = 1, #rotation.conditions do
-			local condition = ns.Conditions and ns.Conditions.Sanitize(rotation.conditions[i]) or nil
-			if condition then
-				clean.conditions[#clean.conditions + 1] = condition
-			end
-		end
-	end
+	clean.conditions = sanitizeConditions(rotation.conditions)
 	local rules = type(rotation.rules) == "table" and rotation.rules or {}
 	for i = 1, #rules do
 		local r = sanitizeRule(rules[i])

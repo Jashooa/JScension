@@ -605,6 +605,30 @@ do
 		freshRule.targetRules[2].priority, "lowest_health_percent")
 	eq("dynamic target defaults to forty yards",
 		freshRule.targetRules[2].maxDistance, 40)
+	local savedConditions = ns.Conditions
+	ns.Conditions = nil
+	local unavailableConditions = {
+		rotations = {
+			{
+				name = "R",
+				conditions = { { type = "unit_in_combat", unit = "player" } },
+				rules = {
+					{
+						spell = "Heal",
+						unit = "player",
+						conditions = { { type = "unit_health_percent", unit = "player", op = "<", value = 50 } },
+					},
+				},
+			},
+		},
+		active = "R",
+	}
+	Profile.sanitizeProfile(unavailableConditions)
+	eq("missing condition registry preserves rotation conditions",
+		#unavailableConditions.rotations[1].conditions, 1)
+	eq("missing condition registry preserves rule conditions",
+		#unavailableConditions.rotations[1].rules[1].conditions, 1)
+	ns.Conditions = savedConditions
 
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
