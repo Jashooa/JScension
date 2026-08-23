@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "command_parser.h"
+#include "target_selector.h"
 
 static int failures;
 
@@ -116,13 +117,112 @@ static void test_prefix_matching(void) {
     expect_true(!command_input_matches_prefix("Other value", 11, "Command ", &input),
                 "prefix matcher rejects an unrelated command");
 }
+static ClientTargetCandidate target_candidate(uint32_t id,
+                                              uint32_t health,
+                                              uint32_t maxHealth,
+                                              double distanceSquared) {
+    ClientTargetCandidate candidate = {{id, 0}, UINT32_MAX, health, maxHealth, distanceSquared};
+    return candidate;
+}
+
+static void expect_order(const ClientTargetCandidate *candidates,
+                         size_t count,
+                         uint32_t first,
+                         uint32_t second,
+                         const char *name) {
+    expect_true(count == 2 && candidates[0].guid.low == first &&
+                candidates[1].guid.low == second, name);
+}
+
+static void test_target_ranking(void) {
+    ClientTargetCandidate candidates[CLIENT_TARGET_MAX_RESULTS];
+    ClientTargetCandidate candidate;
+    ClientObjectGuid noCurrent = {0, 0};
+    size_t count = 0;
+    size_t index;
+
+    candidate = target_candidate(2, 20, 100, 4.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_LOWEST_HEALTH_PERCENT, noCurrent);
+    candidate = target_candidate(1, 50, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_LOWEST_HEALTH_PERCENT, noCurrent);
+    expect_order(candidates, count, 2, 1, "lowest health percentage orders candidates");
+
+    count = 0;
+    candidate = target_candidate(1, 50, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_HIGHEST_HEALTH_PERCENT, noCurrent);
+    candidate = target_candidate(2, 20, 100, 4.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_HIGHEST_HEALTH_PERCENT, noCurrent);
+    expect_order(candidates, count, 1, 2, "highest health percentage orders candidates");
+
+    count = 0;
+    candidate = target_candidate(1, 90, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_MOST_MISSING_HEALTH, noCurrent);
+    candidate = target_candidate(2, 20, 100, 4.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_MOST_MISSING_HEALTH, noCurrent);
+    expect_order(candidates, count, 2, 1, "missing health orders candidates");
+
+    count = 0;
+    candidate = target_candidate(1, 50, 100, 4.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_CLOSEST, noCurrent);
+    candidate = target_candidate(2, 50, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_CLOSEST, noCurrent);
+    expect_order(candidates, count, 2, 1, "closest orders candidates");
+
+    count = 0;
+    candidate = target_candidate(1, 50, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_FARTHEST, noCurrent);
+    candidate = target_candidate(2, 50, 100, 4.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_FARTHEST, noCurrent);
+    expect_order(candidates, count, 2, 1, "farthest orders candidates");
+
+    count = 0;
+    candidate = target_candidate(2, 90, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_LOWEST_HEALTH_PERCENT,
+                                    (ClientObjectGuid){2, 0});
+    candidate = target_candidate(1, 90, 100, 1.0);
+    client_target_selector_consider(candidates, 64, &count, &candidate,
+                                    CLIENT_TARGET_LOWEST_HEALTH_PERCENT,
+                                    (ClientObjectGuid){2, 0});
+    expect_true(count == 2 && candidates[0].guid.low == 2,
+                "current target wins ties and ranking");
+
+    count = 0;
+    for (index = 0; index < CLIENT_TARGET_MAX_RESULTS + 1; index++) {
+        candidate = target_candidate((uint32_t)(index + 1), 100, 100,
+                                     (double)(index + 1));
+        client_target_selector_consider(candidates, CLIENT_TARGET_MAX_RESULTS,
+                                        &count, &candidate, CLIENT_TARGET_CLOSEST,
+                                        noCurrent);
+    }
+    expect_true(count == CLIENT_TARGET_MAX_RESULTS &&
+                candidates[CLIENT_TARGET_MAX_RESULTS - 1].guid.low == 64,
+                "ranking keeps a bounded top-64 result set");
+    candidate = target_candidate(1000, 1, 100, 0.5);
+    client_target_selector_consider(candidates, CLIENT_TARGET_MAX_RESULTS,
+                                    &count, &candidate, CLIENT_TARGET_CLOSEST,
+                                    noCurrent);
+    expect_true(count == CLIENT_TARGET_MAX_RESULTS && candidates[0].guid.low == 1000,
+                "bounded ranking inserts a better late candidate");
+}
+
 
 int main(void) {
     test_guid_parsing();
     test_uint32_parsing();
-
     test_float_parsing();
     test_prefix_matching();
+    test_target_ranking();
     if (failures != 0) {
         fprintf(stderr, "%d native contract test(s) failed\n", failures);
         return 1;

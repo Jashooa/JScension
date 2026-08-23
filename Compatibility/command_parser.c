@@ -23,7 +23,7 @@ void command_input_init(CommandInput *input, const char *text, size_t length) {
 int command_input_matches_prefix(const char *text, size_t length, const char *prefix,
                                  CommandInput *input) {
     size_t prefixLength = strlen(prefix);
-    if (!text || length <= prefixLength || memcmp(text, prefix, prefixLength) != 0) return 0;
+    if (!text || length < prefixLength || memcmp(text, prefix, prefixLength) != 0) return 0;
     command_input_init(input, text + prefixLength, length - prefixLength);
     return 1;
 }

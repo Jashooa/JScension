@@ -33,7 +33,6 @@
 #define SPELL_C__HANDLE_TERRAIN_CLICK   0x0080c340u
 #define PENDING_SPELL_FLAGS             0x00d3f4e0u
 #define PENDING_SPELL                   0x00d3f4e4u
-
 int client_layout_validate(void (*log_message)(const char *format, ...));
 
 #endif /* COMPATIBILITY_CLIENT_LAYOUT_H */

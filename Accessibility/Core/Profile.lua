@@ -13,17 +13,34 @@
 local _, ns = ...
 
 local Profile = {}
+local Targeting = ns.Targeting
+assert(Targeting, "load order: Core/Profile after Core/Targeting")
 
 -- The fallback rotation name: defaults, legacy migration, empty-list repair,
 -- and the un-sanitized fallback all use it.
 local DEFAULT_ROTATION_NAME = "Default"
+
+local function defaultTargetRule(targetType)
+	if targetType == "fixed" or targetType == nil then
+		return { type = "fixed", unit = "target" }
+	end
+	return {
+		type = targetType,
+		priority = targetType == "friendly_player" and "lowest_health_percent" or "closest",
+		maxDistance = 40,
+	}
+end
+
+function Profile.newTargetRule(targetType)
+	return defaultTargetRule(targetType)
+end
 
 function Profile.newRotation(name)
 	return { name = name, conditions = {}, rules = {} }
 end
 
 function Profile.newRule()
-	return { name = "", spell = "", enabled = true, conditions = {} }
+	return { name = "", spell = "", enabled = true, targetRules = { defaultTargetRule() }, conditions = {} }
 end
 
 function Profile.newCondition()
@@ -75,34 +92,62 @@ assert(asBool and asString and asNumber and Constants, "load order: Core/Profile
 -- rule sanitization
 -- ---------------------------------------------------------------------------
 
+local function sanitizeTargetRule(raw)
+	if type(raw) ~= "table" then return nil end
+	local targetType = asString(raw.type, raw.unit ~= nil and "fixed" or "")
+	local clean
+	if targetType == "fixed" then
+		clean = { type = "fixed", unit = asString(raw.unit, "") }
+	elseif targetType == "enemy" or targetType == "enemy_player" or
+		targetType == "enemy_npc" or targetType == "friendly_player" then
+		local defaultPriority = targetType == "friendly_player"
+			and "lowest_health_percent" or "closest"
+		clean = {
+			type = targetType,
+			priority = asString(raw.priority, defaultPriority),
+			maxDistance = clamp(asNumber(raw.maxDistance, 40), 1, 100),
+		}
+	else
+		return nil
+	end
+	return Targeting.IsComplete(clean) and clean or nil
+end
+
+local function sanitizeTargetRules(rule)
+	local source = rule.targetRules
+	local targetRules = {}
+	if type(source) == "table" then
+		for i = 1, math.min(#source, Targeting.MAX_TARGET_RULES) do
+			local targetRule = sanitizeTargetRule(source[i])
+			if targetRule then targetRules[#targetRules + 1] = targetRule end
+		end
+	elseif type(rule.unit) == "string" then
+		local targetRule = sanitizeTargetRule({ type = "fixed", unit = rule.unit })
+		if targetRule then targetRules[1] = targetRule end
+	end
+	return targetRules
+end
+
 -- sanitizeRule repairs one rule. It returns a clean table, or nil when the
 -- rule has no spell. Each condition goes through the registry sanitizer, so an
 -- unknown condition type is dropped, not kept.
 local function sanitizeRule(rule)
 	if type(rule) ~= "table" then return nil end
-
 	local spell = asString(rule.spell, "")
 	if spell == "" then return nil end
-
-	local unit = asString(rule.unit)
-
 	local clean = {
 		name = asString(rule.name, spell),
 		spell = spell,
 		enabled = asBool(rule.enabled, true),
-		unit = unit,
+		targetRules = sanitizeTargetRules(rule),
 		conditions = {},
 	}
-
 	if type(rule.conditions) == "table" then
 		for i = 1, #rule.conditions do
 			local condition = ns.Conditions and ns.Conditions.Sanitize(rule.conditions[i]) or nil
-			if condition then
-				clean.conditions[#clean.conditions + 1] = condition
-			end
+			if condition then clean.conditions[#clean.conditions + 1] = condition end
 		end
 	end
-
 	return clean
 end
 
@@ -255,9 +300,8 @@ local function uniqueName(base)
 end
 
 -- RULE_FIELDS lists every scalar field a rule carries, in the order a copy
--- must reproduce them. copyRule walks it so a new field is copied without a
--- second edit here. conditions is a list and is deep-copied separately.
-local RULE_FIELDS = { "name", "spell", "enabled", "unit" }
+-- must reproduce them. targetRules and conditions are deep-copied separately.
+local RULE_FIELDS = { "name", "spell", "enabled" }
 
 local function copyCondition(source)
 	local cacheKeys = ns.Conditions and ns.Conditions.CacheKeys or {}
@@ -274,12 +318,21 @@ end
 -- compile cache the "lua" condition type stores on its table. The cache keys
 -- are declared in Conditions.CacheKeys (resolved at call time: Conditions
 -- loads after Profile).
+local function copyTargetRule(source)
+	local copy = {}
+	for key, value in pairs(source) do copy[key] = value end
+	return copy
+end
+
 local function copyRule(rule)
-	local copy = { conditions = {} }
+	local copy = { targetRules = {}, conditions = {} }
 	for i = 1, #RULE_FIELDS do
 		copy[RULE_FIELDS[i]] = rule[RULE_FIELDS[i]]
 	end
-	for i = 1, #rule.conditions do
+	for i = 1, #(rule.targetRules or {}) do
+		copy.targetRules[i] = copyTargetRule(rule.targetRules[i])
+	end
+	for i = 1, #(rule.conditions or {}) do
 		copy.conditions[i] = copyCondition(rule.conditions[i])
 	end
 	return copy
@@ -415,8 +468,68 @@ function Profile.setRuleSpell(rule, spell)
 	rule.spell = asString(spell, "")
 end
 
-function Profile.setRuleUnit(rule, unit)
-	rule.unit = asString(unit)
+local function targetRuleList(rule)
+	if type(rule.targetRules) ~= "table" then rule.targetRules = {} end
+	return rule.targetRules
+end
+
+local function clearTargetCache()
+	Targeting.Clear()
+end
+
+function Profile.addTargetRule(rule, targetType)
+	local targetRules = targetRuleList(rule)
+	if #targetRules >= Targeting.MAX_TARGET_RULES then return false end
+	targetRules[#targetRules + 1] = defaultTargetRule(targetType)
+	clearTargetCache()
+	return true
+end
+
+function Profile.deleteTargetRule(rule, index)
+	local targetRules = targetRuleList(rule)
+	if index < 1 or index > #targetRules then return false end
+	table.remove(targetRules, index)
+	clearTargetCache()
+	return true
+end
+
+function Profile.moveTargetRule(rule, from, to)
+	local targetRules = targetRuleList(rule)
+	if to < 1 or to > #targetRules or from < 1 or from > #targetRules or from == to then return false end
+	local targetRule = table.remove(targetRules, from)
+	table.insert(targetRules, to, targetRule)
+	clearTargetCache()
+	return true
+end
+
+function Profile.setTargetRuleType(targetRule, targetType)
+	if not targetRule or not Targeting.ValidTypes[targetType] then return false end
+	local clean = defaultTargetRule(targetType)
+	for key in pairs(targetRule) do targetRule[key] = nil end
+	for key, value in pairs(clean) do targetRule[key] = value end
+	clearTargetCache()
+	return true
+end
+
+function Profile.setTargetRuleUnit(targetRule, unit)
+	if not targetRule then return false end
+	targetRule.unit = asString(unit, "")
+	clearTargetCache()
+	return true
+end
+
+function Profile.setTargetRulePriority(targetRule, priority)
+	if not targetRule or not Targeting.ValidPriorities[priority] then return false end
+	targetRule.priority = priority
+	clearTargetCache()
+	return true
+end
+
+function Profile.setTargetRuleMaxDistance(targetRule, distance)
+	if not targetRule then return false end
+	targetRule.maxDistance = clamp(asNumber(distance, 40), 1, 100)
+	clearTargetCache()
+	return true
 end
 
 function Profile.setConditionEnabled(condition, enabled)

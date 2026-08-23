@@ -152,15 +152,22 @@ function Conditions.Fields(conditionType)
 	return def and def.fields or nil
 end
 
-function Conditions.Eval(condition)
+function Conditions.Eval(condition, contextUnit)
 	if type(condition) ~= "table" then return false end
 	-- disabled conditions are skipped
 	if condition.enabled == false then return false end
 	local def = Registry[resolveConditionType(condition)]
 	if type(def) ~= "table" or type(def.eval) ~= "function" then return false end
 	if not Conditions.IsComplete(condition) then return false end
-	local ok, result = pcall(def.eval, condition)
-	if not ok or condition._error then return false end
+	local evalCondition = condition
+	if condition.unit == "unit" then
+		if type(contextUnit) ~= "string" or contextUnit == "" then return false end
+		evalCondition = {}
+		for key, value in pairs(condition) do evalCondition[key] = value end
+		evalCondition.unit = contextUnit
+	end
+	local ok, result = pcall(def.eval, evalCondition)
+	if not ok or evalCondition._error then return false end
 	result = result and true or false
 	if condition.negated == true then return not result end
 	return result
@@ -225,6 +232,9 @@ end
 -- the default when a new condition is added. Powers stays number-keyed
 -- (not an identity map) because the client's powerType is a number.
 Conditions.Units = Constants.UNIT_TOKENS
+Conditions.ContextUnits = {}
+for i = 1, #Conditions.Units do Conditions.ContextUnits[i] = Conditions.Units[i] end
+Conditions.ContextUnits[#Conditions.ContextUnits + 1] = "unit"
 Conditions.Ops = { "<", "<=", "==", "~=", ">", ">=" }
 Conditions.Kinds = { "buff", "debuff" }
 Conditions.TargetTypes = { "any", "enemy", "friendly", "player" }

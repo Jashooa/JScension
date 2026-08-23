@@ -23,8 +23,22 @@ local state = {
 	spells = {},      -- name -> { usable, noMana, cdStart, cdDuration, inRange }
 	knownSpells = {}, -- array of spell names in the spellbook
 	passiveSpells = {}, -- names reported as passive by the spellbook
+	contextGuid = nil,
+	dynamicCandidates = {},
+	selectorCalls = 0,
+	contextBegins = 0,
+	contextEnds = 0,
+	targetChanges = 0,
 }
 
+local function unitRecord(id)
+	if id == "mouseover" and state.contextGuid then
+		for _, unit in pairs(state.units) do
+			if unit.guid == state.contextGuid then return unit end
+		end
+	end
+	return state.units[id]
+end
 local ns = {}
 
 local function setUnit(id, t) state.units[id] = t end
@@ -47,6 +61,27 @@ fake.Compatibility = function(script)
 	scripts[#scripts + 1] = script
 	if script:find("issecure", 1, true) then
 		return true, (state.secure and 1 or nil), nil
+	elseif script:find("Compatibility_SelectVisibleUnit ", 1, true) then
+		state.selectorCalls = state.selectorCalls + 1
+		return #state.dynamicCandidates
+	elseif script:find("Compatibility_SelectedVisibleUnit ", 1, true) then
+		local index = tonumber(script:match("Compatibility_SelectedVisibleUnit%s+(%d+)"))
+		local candidate = index and state.dynamicCandidates[index]
+		if not candidate then return nil end
+		return candidate.low, candidate.high, candidate.allowedIndex or 4294967295,
+			candidate.health, candidate.maxHealth, candidate.distanceSquared
+	elseif script:find("Compatibility_BeginUnitContext ", 1, true) then
+		state.contextGuid = script:match("Compatibility_BeginUnitContext%s+(%S+)")
+		state.contextBegins = state.contextBegins + 1
+		return state.contextGuid and 1 or 0
+	elseif script:find("Compatibility_EndUnitContext", 1, true) then
+		state.contextGuid = nil
+		state.contextEnds = state.contextEnds + 1
+		return 1
+	elseif script:find("Compatibility_TargetGuid ", 1, true) then
+		state.targetChanges = state.targetChanges + 1
+		state.visibleTargetGuid = script:match("Compatibility_TargetGuid%s+(%S+)")
+		return 1
 	elseif script:find("Compatibility_Position ", 1, true) then
 		local guid = script:match("Compatibility_Position%s+(.+)$")
 		if guid == "0x1111" then return 1.25, 2.5, 3.75 end
@@ -102,54 +137,54 @@ local function hasCastScript(spell)
 end
 
 fake.GetTime = function() return state.time end
-fake.UnitExists = function(u) local x = state.units[u]; return x and x.exists end
-fake.UnitGUID = function(u) local x = state.units[u]; return x and x.guid end
-fake.UnitIsDeadOrGhost = function(u) local x = state.units[u]; return x and x.dead end
+fake.UnitExists = function(u) local x = unitRecord(u); return x and x.exists end
+fake.UnitGUID = function(u) local x = unitRecord(u); return x and x.guid end
+fake.UnitIsDeadOrGhost = function(u) local x = unitRecord(u); return x and x.dead end
 fake.IsMounted = function() return state.mounted end
-fake.UnitHealth = function(u) local x = state.units[u]; return x and x.health or 0 end
-fake.UnitHealthMax = function(u) local x = state.units[u]; return x and x.maxHealth or 0 end
+fake.UnitHealth = function(u) local x = unitRecord(u); return x and x.health or 0 end
+fake.UnitHealthMax = function(u) local x = unitRecord(u); return x and x.maxHealth or 0 end
 -- power fakes accept an optional powerType (0 mana, 1 rage, ...). A unit
 -- table may set per-pool values via powers = { [1] = 22 } and maxPowers,
 -- falling back to the plain power/maxPower fields (the current pool).
 fake.UnitPower = function(u, t)
-	local x = state.units[u]
+	local x = unitRecord(u)
 	if not x then return 0 end
 	if t ~= nil and x.powers and x.powers[t] ~= nil then return x.powers[t] end
 	return x.power or 0
 end
 fake.UnitPowerMax = function(u, t)
-	local x = state.units[u]
+	local x = unitRecord(u)
 	if not x then return 0 end
 	if t ~= nil and x.maxPowers and x.maxPowers[t] ~= nil then return x.maxPowers[t] end
 	return x.maxPower or 0
 end
-fake.UnitCanAttack = function(_, u) local x = state.units[u]; return x and x.hostile end
-fake.UnitName = function(u) local x = state.units[u]; return x and x.name end
-fake.UnitIsEnemy = function(_, u) local x = state.units[u]; return x and x.enemy end
-fake.UnitIsFriendly = function(_, u) local x = state.units[u]; return x and x.friendly end
+fake.UnitCanAttack = function(_, u) local x = unitRecord(u); return x and x.hostile end
+fake.UnitName = function(u) local x = unitRecord(u); return x and x.name end
+fake.UnitIsEnemy = function(_, u) local x = unitRecord(u); return x and x.enemy end
+fake.UnitIsFriendly = function(_, u) local x = unitRecord(u); return x and x.friendly end
 
 -- UnitCastingInfo/UnitChannelInfo return (name, subText, text, texture,
 -- startTime, endTime, ...) in this client. The unit table may set
 -- castingEndMs / channelEndMs to simulate a cast and castingSpell to name
 -- it; notInterruptible simulates an un-interruptible cast.
 fake.UnitCastingInfo = function(u)
-	local x = state.units[u]
+	local x = unitRecord(u)
 	if x and x.castingEndMs then
 		return x.castingSpell or "Cast", "", "", 0, 0, x.castingEndMs, false, 1, x.notInterruptible or false
 	end
 	return nil
 end
 fake.UnitChannelInfo = function(u)
-	local x = state.units[u]
+	local x = unitRecord(u)
 	if x and x.channelEndMs then
 		return x.channelSpell or "Channel", "", "", 0, 0, x.channelEndMs, false, x.notInterruptible or false
 	end
 	return nil
 end
-fake.UnitLevel = function(u) local x = state.units[u]; return x and x.level end
-fake.UnitIsPlayer = function(u) local x = state.units[u]; return x and x.isPlayer end
-fake.UnitClassification = function(u) local x = state.units[u]; return x and x.classification end
-fake.GetComboPoints = function(_, u) local x = state.units[u]; return x and x.comboPoints or 0 end
+fake.UnitLevel = function(u) local x = unitRecord(u); return x and x.level end
+fake.UnitIsPlayer = function(u) local x = unitRecord(u); return x and x.isPlayer end
+fake.UnitClassification = function(u) local x = unitRecord(u); return x and x.classification end
+fake.GetComboPoints = function(_, u) local x = unitRecord(u); return x and x.comboPoints or 0 end
 fake.UnitDetailedThreatSituation = function(_, u)
 	local x = state.units[u]
 	if x and x.threatPercent then return x.isTanking or false, 3, x.threatPercent, x.threatPercent, 0 end
@@ -318,6 +353,7 @@ loadModule(ROOT .. "Game/Cast.lua", ns)
 loadModule(ROOT .. "Game/Cooldown.lua", ns)
 loadModule(ROOT .. "Game/Input.lua", ns)
 loadModule(ROOT .. "Core/Compatibility.lua", ns)
+loadModule(ROOT .. "Core/Targeting.lua", ns)
 loadModule(ROOT .. "Core/Profile.lua", ns)
 loadModule(ROOT .. "Utils/SpellPicker.lua", ns)
 loadModule(ROOT .. "Core/ConditionDefinitions.lua", ns)
@@ -335,6 +371,7 @@ local Profile = ns.Profile
 local SpellPicker = ns.SpellPicker
 local Spell = ns.Spell
 local Conditions = ns.Conditions
+local Unit = ns.Unit
 local Rotation = ns.Rotation
 local Config = ns.Config
 local Log = ns.Log
@@ -552,9 +589,22 @@ do
 	local r1 = rules[1]
 	eq("rule spell kept", r1.spell, "Fireball")
 	eq("rule enabled coerced", r1.enabled, false)
-	eq("rule unit kept (no whitelist)", r1.unit, "banana")
+	eq("rule unit scalar removed", r1.unit, nil)
+	eq("invalid legacy target removed", #r1.targetRules, 0)
 	eq("condition count (unknown dropped)", #r1.conditions, 1)
 	eq("condition type migrated", r1.conditions[1].type, "unit_is_enemy")
+	local migratedMouseover = { rules = { { spell = "Heal", unit = "mouseover" } } }
+	Profile.sanitizeProfile(migratedMouseover)
+	eq("legacy mouseover migrates as fixed target",
+		migratedMouseover.rotations[1].rules[1].targetRules[1].unit, "mouseover")
+	eq("legacy scalar is removed during migration",
+		migratedMouseover.rotations[1].rules[1].unit, nil)
+	local freshRule = Profile.newRule()
+	Profile.addTargetRule(freshRule, "friendly_player")
+	eq("friendly target defaults to lowest health",
+		freshRule.targetRules[2].priority, "lowest_health_percent")
+	eq("dynamic target defaults to forty yards",
+		freshRule.targetRules[2].maxDistance, 40)
 
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
@@ -936,6 +986,13 @@ local scenarioTime = 0
 -- The engine reads Profile.activeRules(), so the profile must carry a
 -- rotations array and an active name.
 local function setRules(t)
+	for i = 1, #t do
+		local rule = t[i]
+		if rule.targetRules == nil then
+			rule.targetRules = { { type = "fixed", unit = rule.unit or "target" } }
+		end
+		rule.unit = nil
+	end
 	prof().rotations = { { name = "Default", rules = t } }
 	prof().active = "Default"
 end
@@ -950,6 +1007,13 @@ local function resetRotation()
 	scenarioTime = scenarioTime + 1000
 	state.time = scenarioTime
 	state.secure = true
+	state.contextGuid = nil
+	state.dynamicCandidates = {}
+	for i = 1, 40 do state.units["nameplate" .. i] = nil end
+	state.selectorCalls = 0
+	state.contextBegins = 0
+	state.contextEnds = 0
+	state.targetChanges = 0
 	Rotation.ClearJitter()
 	prof().antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW
 	setKnown({ "Fireball", "Renew", "probe" })
@@ -1267,6 +1331,120 @@ ok("aura missing resolves by name", Conditions.Eval({ type = "unit_aura_missing"
 state.auras.target = { { kind = "debuff", name = "Moonfire (Rank 2)", count = 1, remaining = 10, mine = true } }
 ok("aura field accepts spell ID", Conditions.Eval({ type = "unit_aura_missing", unit = "target", aura = 8921, kind = "debuff" }) == false)
 -- ---------------------------------------------------------------------------
+-- Dynamic targeting and contextual condition tests
+-- ---------------------------------------------------------------------------
+
+do
+	resetRotation()
+	local candidateGuid = "0x0000000000003333"
+	setUnit("enemyCandidate", {
+		exists = true, dead = false, guid = candidateGuid, hostile = true,
+		enemy = true, health = 30, maxHealth = 100,
+	})
+	setUnit("nameplate1", {
+		exists = true, dead = false, guid = candidateGuid, hostile = true,
+		enemy = true, health = 30, maxHealth = 100,
+	})
+	state.dynamicCandidates = {
+		{ low = 0x3333, high = 0, health = 30, maxHealth = 100, distanceSquared = 1 },
+	}
+	setRules({
+		{ spell = "Fireball", enabled = true,
+			targetRules = {
+				{ type = "enemy", priority = "closest", maxDistance = 40 },
+			},
+			conditions = {
+				{ type = "unit_health_percent", unit = "unit", op = "<", value = 50 },
+			},
+		},
+	})
+	clearScripts()
+	ok("dynamic enemy candidate casts", Rotation.CastBest() == true)
+	ok("dynamic cast uses official nameplate token",
+		(function()
+			for i = 1, #scripts do
+				if scripts[i]:find('CastSpellByName("Fireball", "nameplate1")', 1, true) then
+					return true
+				end
+			end
+			return false
+		end)())
+	eq("dynamic selector enumerates once", state.selectorCalls, 1)
+	eq("nameplate candidate needs no context", state.contextBegins, 0)
+	eq("nameplate candidate restores no context", state.contextEnds, 0)
+	eq("nameplate cast changes no target", state.targetChanges, 0)
+	eq("dynamic candidate remains nameplate token", Unit.guid("nameplate1"), candidateGuid)
+	ok("unit condition evaluates nameplate candidate",
+		Conditions.Eval({ type = "unit_health_percent", unit = "unit", op = "<", value = 50 },
+			"nameplate1") == true)
+	ok("contextual unit fails without candidate",
+		Conditions.Eval({ type = "unit_health_percent", unit = "unit", op = "<", value = 50 }) == false)
+	ok("literal target ignores nameplate candidate",
+		Conditions.Eval({ type = "unit_health_percent", unit = "target", op = "<", value = 50 },
+			"nameplate1") == false)
+
+	resetRotation()
+	setSpell("Renew", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
+	setUnit("player", { exists = true, dead = false, guid = "0x1111", health = 30, maxHealth = 100 })
+	state.dynamicCandidates = {
+		{ low = 0x1111, high = 0, health = 30, maxHealth = 100, distanceSquared = 1,
+			allowedIndex = 0 },
+	}
+	setRules({
+		{ spell = "Renew", enabled = true,
+			targetRules = {
+				{ type = "friendly_player", priority = "lowest_health_percent", maxDistance = 40 },
+			},
+			conditions = {
+				{ type = "unit_health_percent", unit = "unit", op = "<", value = 50 },
+			},
+		},
+	})
+	clearScripts()
+	eq("friendly player uses no temporary context", state.contextBegins, 0)
+	eq("friendly player changes no target", state.targetChanges, 0)
+	resetRotation()
+	local rejectedGuid = "0x0000000000004444"
+	setUnit("enemyCandidate", {
+		exists = true, dead = false, guid = candidateGuid, hostile = true,
+		enemy = true, health = 80, maxHealth = 100,
+	})
+	setUnit("rejectedEnemy", {
+		exists = true, dead = false, guid = rejectedGuid, hostile = true,
+		enemy = true, health = 30, maxHealth = 100,
+	})
+	setUnit("nameplate1", {
+		exists = true, dead = false, guid = candidateGuid, hostile = true,
+		enemy = true, health = 80, maxHealth = 100,
+	})
+	setUnit("nameplate2", {
+		exists = true, dead = false, guid = rejectedGuid, hostile = true,
+		enemy = true, health = 30, maxHealth = 100,
+	})
+	state.dynamicCandidates = {
+		{ low = 0x3333, high = 0, health = 80, maxHealth = 100, distanceSquared = 1 },
+		{ low = 0x4444, high = 0, health = 30, maxHealth = 100, distanceSquared = 2 },
+	}
+	setRules({
+		{ spell = "Fireball", enabled = true,
+			targetRules = {
+				{ type = "enemy", priority = "closest", maxDistance = 40 },
+			},
+			conditions = {
+				{ type = "unit_health_percent", unit = "unit", op = "<", value = 50 },
+			},
+		},
+	})
+	clearScripts()
+	ok("rejected dynamic candidate falls through batch", Rotation.CastBest() == true)
+	eq("rejected batch enumerates once", state.selectorCalls, 1)
+	eq("rejected candidates use no context", state.contextBegins, 0)
+	eq("rejected candidates restore no context", state.contextEnds, 0)
+	eq("rejected candidate changes no target", state.targetChanges, 0)
+	eq("passing fallback remains nameplate token", Unit.guid("nameplate2"), rejectedGuid)
+end
+
+-- ---------------------------------------------------------------------------
 -- Spell.stripRank tests
 -- ---------------------------------------------------------------------------
 
@@ -1389,11 +1567,11 @@ do
 	Profile.setRuleEnabled(rule, false)
 	Profile.setRuleName(rule, "Primary")
 	Profile.setRuleSpell(rule, "Fireball")
-	Profile.setRuleUnit(rule, "target")
+	Profile.setTargetRuleUnit(rule.targetRules[1], "target")
 	eq("rule setters persist", rule.enabled, false)
 	eq("rule name setter persists", rule.name, "Primary")
 	eq("rule spell setter persists", rule.spell, "Fireball")
-	eq("rule unit setter persists", rule.unit, "target")
+	eq("target rule setter persists", rule.targetRules[1].unit, "target")
 
 	Profile.setConditionField(condition, "unit", "target")
 	Profile.setConditionField(condition, "value", "enemy")

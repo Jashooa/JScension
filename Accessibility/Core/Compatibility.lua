@@ -80,6 +80,68 @@ end
 local function runCommand(command, ...)
 	return _G.Compatibility(string.format(command, ...))
 end
+local TARGET_CATEGORIES = {
+	enemy = 0,
+	enemy_player = 1,
+	enemy_npc = 2,
+	friendly_player = 3,
+}
+local TARGET_CRITERIA = {
+	lowest_health_percent = 0,
+	highest_health_percent = 1,
+	most_missing_health = 2,
+	closest = 3,
+	farthest = 4,
+}
+
+local function targetEnum(value, values)
+	if type(value) == "number" then return value end
+	return values[value]
+end
+
+local function guidWords(low, high)
+	return ("0x%08x%08x"):format(high, low)
+end
+
+local function appendGuidArguments(parts, guids)
+	parts[#parts + 1] = tostring(#guids)
+	for i = 1, #guids do parts[#parts + 1] = tostring(guids[i]) end
+end
+
+function Compatibility.SelectVisibleUnits(category, criterion, maxDistance, currentGuid,
+	allowedGuids, excludedGuids)
+	category = targetEnum(category, TARGET_CATEGORIES)
+	criterion = targetEnum(criterion, TARGET_CRITERIA)
+	allowedGuids = allowedGuids or {}
+	excludedGuids = excludedGuids or {}
+	if category == nil or criterion == nil or type(maxDistance) ~= "number" or maxDistance < 0 or
+		type(currentGuid) ~= "string" then return end
+	local parts = {
+		("Compatibility_SelectVisibleUnit %d %d %f %s"):format(
+			category, criterion, maxDistance, currentGuid),
+	}
+	appendGuidArguments(parts, allowedGuids)
+	appendGuidArguments(parts, excludedGuids)
+	local count = runCommand(table.concat(parts, " "))
+	if type(count) ~= "number" or count < 0 then return end
+	local candidates = {}
+	for i = 1, count do
+		local low, high, allowedIndex, health, maxHealth, distanceSquared =
+			runCommand(("Compatibility_SelectedVisibleUnit %d"):format(i))
+		if low == nil or high == nil then return end
+		candidates[i] = {
+			guid = guidWords(low, high),
+			allowedIndex = allowedIndex,
+			health = health,
+			maxHealth = maxHealth,
+			distanceSquared = distanceSquared,
+		}
+	end
+	return candidates
+end
+
+
+
 local UNIT_COUNT_RELATIONSHIPS = {
 	any = 0,
 	enemy = 1,
@@ -119,15 +181,13 @@ end
 -- unit token ("player" for self-cast). If the spell opens a ground-
 -- targeting cursor, ConfirmGround resolves it at the unit's position.
 function Compatibility.Cast(spell, unit)
-	if unit == "player" then
-		Compatibility.Call('CastSpellByName(%s, "player")', spell)
-	else
-		Compatibility.Call("CastSpellByName(%s)", spell)
-	end
+	unit = unit or "target"
+	Compatibility.Call("CastSpellByName(%s, %s)", spell, unit)
 	local isTargeting = Compatibility.Call("return SpellIsTargeting()")
 	if isTargeting then
 		Compatibility.ConfirmGround(unit)
 	end
+	return true
 end
 
 -- StopCasting stops the current cast.

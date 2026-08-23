@@ -23,6 +23,7 @@ Game\Cooldown.lua
 Game\Input.lua
 
 Core\Compatibility.lua
+Core\Targeting.lua
 Core\Profile.lua
 Core\ConditionDefinitions.lua
 Core\Conditions.lua

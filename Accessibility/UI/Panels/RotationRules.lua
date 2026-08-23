@@ -21,12 +21,13 @@ local AceGUI = LibStub("AceGUI-3.0", true)
 if not AceGUI then return end
 
 local Profile = ns.Profile
+local Targeting = ns.Targeting
 local Conditions = ns.Conditions
 local SpellPicker = ns.SpellPicker
 local SpellTooltip = ns.SpellTooltip
 local Fields = ns.Fields
 local OptionPanel = ns.OptionPanel
-assert(Profile and Conditions and SpellPicker and SpellTooltip and Fields and OptionPanel,
+assert(Profile and Targeting and Conditions and SpellPicker and SpellTooltip and Fields and OptionPanel,
 	"load order: UI/Panels/RotationRules before its dependencies")
 local Type, Version = "RotationRules", 1
 if (AceGUI:GetWidgetVersion(Type) or 0) >= Version then return end
@@ -102,7 +103,7 @@ local function conditionTypeValues()
 end
 
 -- conditionField renders one registry-declared field as the right AceGUI widget.
-local function conditionField(condition, fieldKey, fieldType, onChange)
+local function conditionField(condition, fieldKey, fieldType, onChange, allowContextUnit)
 	local name = Conditions.FieldLabel(fieldKey)
 	local function commit(value)
 		Profile.setConditionField(condition, fieldKey, value)
@@ -115,7 +116,8 @@ local function conditionField(condition, fieldKey, fieldType, onChange)
 	elseif fieldType == "op" then
 		return Fields.Dropdown(name, Conditions.Ops, condition[fieldKey], commit)
 	elseif fieldType == "unit" then
-		return Fields.Dropdown(name, Conditions.Units, condition[fieldKey], commit)
+		local units = allowContextUnit and Conditions.ContextUnits or Conditions.Units
+		return Fields.Dropdown(name, units, condition[fieldKey], commit)
 	elseif fieldType == "kind" then
 		return Fields.Dropdown(name, Conditions.Kinds, condition[fieldKey], commit)
 	elseif fieldType == "target_type" then
@@ -217,7 +219,8 @@ local function buildConditionSettings(panel, rule, condIndex, container)
 	if fields then
 		for i = 1, #fields do
 			local field = fields[i]
-			local control = conditionField(condition, field.key, field.type, updateCardState)
+			local control = conditionField(condition, field.key, field.type, updateCardState,
+				rule.spell ~= nil)
 			if field.type == "code" then control:SetUserData("colspan", 2) end
 			controls:AddChild(control)
 		end
@@ -266,6 +269,94 @@ local function conditionCard(panel, rule, condIndex, container)
 	return card
 end
 
+local targetRuleExpanded = {}
+local targetTypeLabels = {
+	fixed = "Fixed unit",
+	enemy = "Enemy",
+	enemy_player = "Enemy player",
+	enemy_npc = "Enemy NPC",
+	friendly_player = "Friendly player",
+}
+local targetPriorityLabels = {
+	lowest_health_percent = "Lowest health percentage",
+	highest_health_percent = "Highest health percentage",
+	most_missing_health = "Most missing health",
+	closest = "Closest",
+	farthest = "Farthest",
+}
+
+local function targetRuleTitle(targetRule)
+	if targetRule.type == "fixed" then
+		return ("%s: %s"):format(targetTypeLabels.fixed, targetRule.unit or "?")
+	end
+	return ("%s: %s, %d yd"):format(
+		targetTypeLabels[targetRule.type] or "?",
+		targetPriorityLabels[targetRule.priority] or "?",
+		tonumber(targetRule.maxDistance) or 0)
+end
+
+local function targetRuleCard(panel, rule, targetIndex, container)
+	local targetRule = rule.targetRules[targetIndex]
+	local card = AceGUI:Create("TitleButtonGroup")
+	card:SetTitle(targetRuleTitle(targetRule))
+	card:SetFullWidth(true)
+	card:SetLayout("Flow")
+	card:SetTitleButtons({
+		{ label = targetRuleExpanded[targetRule] and "−" or "+", func = function()
+			targetRuleExpanded[targetRule] = not targetRuleExpanded[targetRule]
+			OptionPanel.Refresh(panel)
+		end },
+		{ label = "▲", disabled = targetIndex <= 1, func = function()
+			Profile.moveTargetRule(rule, targetIndex, targetIndex - 1)
+			OptionPanel.Refresh(panel)
+		end },
+		{ label = "▼", disabled = targetIndex >= #rule.targetRules, func = function()
+			Profile.moveTargetRule(rule, targetIndex, targetIndex + 1)
+			OptionPanel.Refresh(panel)
+		end },
+		{ label = "Delete", func = function()
+			Profile.deleteTargetRule(rule, targetIndex)
+			targetRuleExpanded[targetRule] = nil
+			OptionPanel.Refresh(panel)
+		end },
+	})
+	if targetRuleExpanded[targetRule] then
+		card:SetBorderVisible(true)
+		local controls = AceGUI:Create("SimpleGroup")
+		controls:SetFullWidth(true)
+		controls:SetLayout("Grid")
+		card:AddChild(controls)
+		local typeDropdown = Fields.Dropdown("Target type", targetTypeLabels, targetRule.type, function(value)
+			Profile.setTargetRuleType(targetRule, value)
+			OptionPanel.Refresh(panel)
+		end)
+		typeDropdown:SetUserData("colspan", 2)
+		controls:AddChild(typeDropdown)
+		if targetRule.type == "fixed" then
+			controls:AddChild(Fields.Dropdown("Fixed unit", Conditions.Units, targetRule.unit, function(value)
+				Profile.setTargetRuleUnit(targetRule, value)
+				OptionPanel.Refresh(panel)
+			end))
+		else
+			controls:AddChild(Fields.Dropdown("Priority", targetPriorityLabels, targetRule.priority, function(value)
+				Profile.setTargetRulePriority(targetRule, value)
+				OptionPanel.Refresh(panel)
+			end))
+			controls:AddChild(Fields.Slider("Maximum distance", 1, 100, 1,
+				targetRule.maxDistance, function(value)
+					Profile.setTargetRuleMaxDistance(targetRule, value)
+					OptionPanel.Refresh(panel)
+				end))
+		end
+		setCardColor(card, Targeting.IsComplete(targetRule), true)
+	else
+		card:SetBorderVisible(false)
+		setCardColor(card, Targeting.IsComplete(targetRule), true)
+	end
+	container:AddChild(card)
+	return card
+end
+
 -- ---------------------------------------------------------------------------
 -- rule card
 -- ---------------------------------------------------------------------------
@@ -283,7 +374,11 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 	card:SetFullWidth(true)
 	card:SetLayout("Flow")
 	local function isRuleComplete()
-		return rule.spell and rule.spell ~= "" and rule.unit and rule.unit ~= ""
+		if not (rule.spell and rule.spell ~= "") then return false end
+		for i = 1, #(rule.targetRules or {}) do
+			if Targeting.IsComplete(rule.targetRules[i]) then return true end
+		end
+		return false
 	end
 	local function updateCardState()
 		card:SetTitle(ruleTitle(rule, ruleIndex))
@@ -340,11 +435,31 @@ local function ruleCard(panel, rotation, ruleIndex, container)
 		end)
 		controls:AddChild(spellDropdown)
 
-		local unitDropdown = Fields.Dropdown("Target unit", Conditions.Units, rule.unit, function(value)
-			Profile.setRuleUnit(rule, value)
-			updateCardState()
-		end)
-		controls:AddChild(unitDropdown)
+		local targetingGroup = AceGUI:Create("TitleButtonGroup")
+		targetingGroup:SetTitle("Targeting rules")
+		targetingGroup:SetFullWidth(true)
+		targetingGroup:SetUserData("colspan", 2)
+		targetingGroup:SetLayout("Flow")
+		targetingGroup:SetTitleButtons({
+			{ label = "Add targeting rule",
+				disabled = #(rule.targetRules or {}) >= Targeting.MAX_TARGET_RULES,
+				func = function()
+					if Profile.addTargetRule(rule, "fixed") then
+						targetRuleExpanded[rule.targetRules[#rule.targetRules]] = true
+						OptionPanel.Refresh(panel)
+					end
+				end },
+		})
+		controls:AddChild(targetingGroup)
+		if #(rule.targetRules or {}) == 0 then
+			local emptyTargetLabel = AceGUI:Create("Label")
+			emptyTargetLabel:SetText("No targeting rules. Add one above.")
+			targetingGroup:AddChild(emptyTargetLabel)
+		else
+			for i = 1, #rule.targetRules do
+				targetRuleCard(panel, rule, i, targetingGroup)
+			end
+		end
 
 		local conditionsGroup = AceGUI:Create("TitleButtonGroup")
 		conditionsGroup:SetTitle("Conditions")

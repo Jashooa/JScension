@@ -2,8 +2,15 @@
 #define COMPATIBILITY_CLIENT_API_H
 
 #include <stdint.h>
+#include <stddef.h>
 #define CLIENT_UNIT_TYPE_MASK 0x08u
+#define CLIENT_PLAYER_TYPE_MASK 0x10u
+#define CLIENT_UNIT_OR_PLAYER_TYPE_MASK (CLIENT_UNIT_TYPE_MASK | CLIENT_PLAYER_TYPE_MASK)
+#define CLIENT_OBJECT_FIELD_TYPE_INDEX 0x2u
+#define CLIENT_UNIT_FIELD_HEALTH_INDEX 0x18u
+#define CLIENT_UNIT_FIELD_MAXHEALTH_INDEX 0x20u
 
+struct ClientTargetCandidate;
 
 typedef struct {
     uint32_t low;
@@ -38,5 +45,16 @@ int client_read_object_scale(void *object, float *scale);
 int client_trace_line_of_sight(ClientWorldPosition start, ClientWorldPosition end,
                                float startScale, float endScale);
 int client_handle_terrain_click(const ClientTerrainClick *terrainClick);
+int client_select_visible_units(unsigned int category,
+                                unsigned int criterion,
+                                float maxDistance,
+                                ClientObjectGuid currentTarget,
+                                const ClientObjectGuid *allowed,
+                                size_t allowedCount,
+                                const ClientObjectGuid *excluded,
+                                size_t excludedCount,
+                                struct ClientTargetCandidate *candidates,
+                                size_t capacity,
+                                size_t *count);
 
 #endif /* COMPATIBILITY_CLIENT_API_H */
