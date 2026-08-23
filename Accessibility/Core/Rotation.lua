@@ -242,9 +242,6 @@ end
 local function passesSpellGates(rule, currentTime)
 	if Player.isMounted() then return false, "mounted" end
 	if not SpellPicker.IsKnown(rule.spell) then return false, "not known" end
-	local usable, noMana = Spell.usable(rule.spell)
-	if not usable then return false, "not usable" end
-	if noMana then return false, "no mana" end
 	if Spell.hasCharges(rule.spell) and Spell.currentCharges(rule.spell) <= 0 then
 		return false, "no charges"
 	end
@@ -254,6 +251,16 @@ local function passesSpellGates(rule, currentTime)
 		if currentTime < (start + duration) then return false, "on cooldown" end
 	end
 	return true
+end
+
+local function passesCandidateUsability(rule, unit)
+	local usable, noMana = Spell.usable(rule.spell)
+	if noMana then return false, "no mana" end
+	if usable then return true end
+	local candidateGuid = Unit.guid(unit)
+	local targetGuid = Unit.guid("target")
+	if candidateGuid and targetGuid and candidateGuid ~= targetGuid then return true end
+	return false, "not usable"
 end
 
 local function evaluateCandidate(rule, targetRule, candidate, currentTime)
@@ -266,6 +273,8 @@ local function evaluateCandidate(rule, targetRule, candidate, currentTime)
 	local ok, passes, reason = pcall(function()
 		local targetPasses, targetReason = passesTargetGates(unit, rule.spell)
 		if not targetPasses then return false, targetReason end
+		local usablePasses, usableReason = passesCandidateUsability(rule, unit)
+		if not usablePasses then return false, usableReason end
 		if not passesConditions(rule, unit) then return false, "condition" end
 		if not passesAntiSpam(rule, selection, currentTime) then return false, "anti-spam" end
 		return true

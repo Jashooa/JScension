@@ -1406,6 +1406,40 @@ do
 	ok("literal target ignores nameplate candidate",
 		Conditions.Eval({ type = "unit_health_percent", unit = "target", op = "<", value = 50 },
 			"nameplate1") == false)
+	resetRotation()
+	setKnown({ "Electrocute" })
+	setSpell("Electrocute", {
+		usable = false, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1,
+	})
+	setUnit("nameplate1", {
+		exists = true, dead = false, guid = candidateGuid, hostile = true,
+		enemy = true, health = 30, maxHealth = 100,
+	})
+	state.dynamicCandidates = {
+		{ low = 0x3333, high = 0, health = 30, maxHealth = 100, distanceSquared = 1 },
+	}
+	setRules({
+		{ spell = "Electrocute", enabled = true,
+			targetRules = {
+				{ type = "enemy", priority = "closest", maxDistance = 40 },
+			},
+			conditions = {
+				{ type = "unit_health_percent", unit = "unit", op = "<", value = 35 },
+			},
+		},
+	})
+	clearScripts()
+	ok("target-sensitive usable gate allows nameplate candidate", Rotation.CastBest() == true)
+	ok("target-sensitive spell uses nameplate token",
+		(function()
+			for i = 1, #scripts do
+				if scripts[i]:find('CastSpellByName("Electrocute", "nameplate1")', 1, true) then
+					return true
+				end
+			end
+			return false
+		end)())
+
 
 	resetRotation()
 	setSpell("Renew", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
@@ -1425,6 +1459,7 @@ do
 		},
 	})
 	clearScripts()
+	ok("friendly player dynamic candidate casts", Rotation.CastBest() == true)
 	eq("friendly player uses no temporary context", state.contextBegins, 0)
 	eq("friendly player changes no target", state.targetChanges, 0)
 	resetRotation()
