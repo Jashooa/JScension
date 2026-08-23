@@ -1078,12 +1078,10 @@ ok("log says not compatible", Log.Dump(1)[1]:find("not compatible", 1, true) ~= 
 state.secure = true
 
 resetRotation()
+Log.Clear()
 setUnit("player", { exists = true, dead = true })
 ok("dead player blocks the cast", Rotation.CastBest() == false)
-ok("log says player dead", Log.Dump(1)[1]:find("player dead", 1, true) ~= nil)
-	local deadLogCount = Log.Count()
-	ok("repeated dead player blocks the cast", Rotation.CastBest() == false)
-	eq("dead player log is rate limited", Log.Count(), deadLogCount)
+eq("dead player emits no log", Log.Count(), 0)
 resetRotation()
 state.mounted = true
 clearScripts()

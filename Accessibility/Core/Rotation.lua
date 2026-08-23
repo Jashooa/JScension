@@ -88,20 +88,6 @@ local function armJitter(selection, guid, currentTime, window)
 	jitterPending.dueAt = currentTime + math.random() * window
 	jitterPending.window = window
 end
-local playerDeadLogged = false
-
-local function playerIsDead()
-	local dead = Unit.isDeadOrGhost("player")
-	if dead then
-		if not playerDeadLogged then
-			Log.Write("cast", "player dead")
-			playerDeadLogged = true
-		end
-	else
-		playerDeadLogged = false
-	end
-	return dead
-end
 local lastAttemptSpell
 local lastAttemptState
 local lastAttemptUnit
@@ -409,7 +395,7 @@ end
 -- CastBest casts the first rule that passes every gate. It returns true when
 function Rotation.CastBest(automatic)
 	local currentTime = GetTime()
-	local playerDead = playerIsDead()
+	local playerDead = Unit.isDeadOrGhost("player")
 
 	if not automatic then
 		clearPending()
