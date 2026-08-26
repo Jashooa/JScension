@@ -75,7 +75,7 @@ local function rotationGroup(rotation, index)
 	return {
 		type = "group",
 		name = function()
-			if Profile.current().active == rotation.name then return rotation.name .. " (Active)" end
+			if Profile.activeName() == rotation.name then return rotation.name .. " (Active)" end
 			return rotation.name
 		end,
 		order = index,

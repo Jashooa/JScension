@@ -37,7 +37,7 @@ local function build(panel)
 		rotationNames[i] = list[i].name
 	end
 	local activeDropdown = Fields.Dropdown("Active rotation", rotationNames,
-		Profile.current().active, function(value)
+		Profile.activeName(), function(value)
 			Profile.setActiveByName(value)
 			Config.NotifyOptionsChanged()
 		end)

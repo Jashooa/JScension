@@ -45,7 +45,7 @@ local function build(panel)
 
 	local setActive = AceGUI:Create("Button")
 	setActive:SetText("Set active")
-	setActive:SetDisabled(Profile.current().active == rotation.name)
+	setActive:SetDisabled(Profile.activeName() == rotation.name)
 	setActive:SetCallback("OnClick", function()
 		Profile.setActive(rotation)
 		Config.NotifyOptionsChanged()

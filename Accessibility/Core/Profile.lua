@@ -7,7 +7,8 @@
 --
 -- Schema:
 --   profile.rotations = ordered array of { name, rules }
---   profile.active     = name of the active rotation
+--   profile.active     = legacy shared active pointer
+--   char.activeRotation = active rotation name for this character
 -- The old flat `rules` array migrates into one rotation named "Default".
 
 local _, ns = ...
@@ -59,6 +60,7 @@ Profile.defaults = {
 		-- Legacy saved-variable key; now controls failed-cast throttling.
 		antiSpamWindow = ns.Constants.DEFAULT_FAILURE_THROTTLE_WINDOW,
 		jitterWindow = ns.Constants.DEFAULT_JITTER_WINDOW,
+		-- Legacy shared pointer; character data owns the active rotation.
 		active = DEFAULT_ROTATION_NAME,
 		rotations = {
 			Profile.newRotation(DEFAULT_ROTATION_NAME),
@@ -73,11 +75,15 @@ Profile.defaults = {
 			locked = false,
 		},
 	},
+	char = {},
 }
 
 -- current returns the live profile. Core sets the db before the first call.
 function Profile.current()
 	return ns.addon.db.profile
+end
+local function characterData()
+	return ns.addon.db.char
 end
 -- coercion helpers come from Utils/Coerce
 local asBool = ns.Coerce.asBool
@@ -179,6 +185,13 @@ local function sanitizeRotation(rotation)
 	end
 	return clean
 end
+local function rotationExists(rotations, name)
+	if type(rotations) ~= "table" then return false end
+	for i = 1, #rotations do
+		if rotations[i].name == name then return true end
+	end
+	return false
+end
 
 -- ---------------------------------------------------------------------------
 -- profile sanitization
@@ -228,11 +241,7 @@ function Profile.sanitizeProfile(p)
 
 	-- active must name an existing rotation, else the first one
 	local active = asString(p.active, "")
-	local found = false
-	for i = 1, #clean do
-		if clean[i].name == active then found = true end
-	end
-	if not found then active = clean[1].name end
+	if not rotationExists(clean, active) then active = clean[1].name end
 	p.active = active
 
 	if type(p.button) ~= "table" then p.button = {} end
@@ -244,6 +253,19 @@ function Profile.sanitizeProfile(p)
 	b.y = asNumber(b.y, 0)
 	b.scale = math.max(0.5, math.min(2.0, asNumber(b.scale, 1.0)))
 	b.locked = asBool(b.locked, false)
+end
+function Profile.sanitizeCharacter(character, profile)
+	if type(character) ~= "table" then return end
+	profile = profile or Profile.current()
+	local rotations = type(profile) == "table" and profile.rotations or {}
+	local active = asString(character.activeRotation, "")
+	if not rotationExists(rotations, active) then
+		active = asString(type(profile) == "table" and profile.active or "", "")
+	end
+	if not rotationExists(rotations, active) then
+		active = rotations[1] and rotations[1].name or DEFAULT_ROTATION_NAME
+	end
+	character.activeRotation = active
 end
 
 -- ---------------------------------------------------------------------------
@@ -257,18 +279,32 @@ function Profile.rotations()
 	local p = Profile.current()
 	if type(p.rotations) ~= "table" then
 		p.rotations = { { name = DEFAULT_ROTATION_NAME, rules = {} } }
-		p.active = p.active or DEFAULT_ROTATION_NAME
+		local character = characterData()
+		if type(character) == "table" then
+			character.activeRotation = character.activeRotation or DEFAULT_ROTATION_NAME
+		else
+			p.active = p.active or DEFAULT_ROTATION_NAME
+		end
 	end
 	return p.rotations
+end
+
+-- activeName returns the character-specific active rotation name.
+function Profile.activeName()
+	local character = characterData()
+	if type(character) == "table" and
+		type(character.activeRotation) == "string" and character.activeRotation ~= "" then
+		return character.activeRotation
+	end
+	return Profile.current().active
 end
 
 -- activeRotation returns the active rotation object. It falls back to the
 -- first rotation when the active name does not resolve (should not happen
 -- after sanitize).
 function Profile.activeRotation()
-	local p = Profile.current()
 	local list = Profile.rotations()
-	local name = p.active
+	local name = Profile.activeName()
 	for i = 1, #list do
 		if list[i].name == name then
 			return list[i]
@@ -276,7 +312,6 @@ function Profile.activeRotation()
 	end
 	return list[1]
 end
-
 -- activeRules returns the active rotation's rule array.
 function Profile.activeRules()
 	return Profile.activeRotation().rules
@@ -367,8 +402,8 @@ function Profile.deleteRotation(rotation)
 	for i = 1, #list do
 		if list[i] == rotation then
 			table.remove(list, i)
-			if Profile.current().active == rotation.name then
-				Profile.current().active = list[1].name
+			if Profile.activeName() == rotation.name then
+				characterData().activeRotation = list[1].name
 			end
 			return true
 		end
@@ -386,8 +421,8 @@ function Profile.renameRotation(rotation, newName)
 		local other = Profile.rotations()[i]
 		if other ~= rotation and other.name == newName then return false end
 	end
-	if Profile.current().active == rotation.name then
-		Profile.current().active = newName
+	if Profile.activeName() == rotation.name then
+		characterData().activeRotation = newName
 	end
 	rotation.name = newName
 	return true
@@ -395,7 +430,7 @@ end
 
 -- setActive makes a rotation the active one.
 function Profile.setActive(rotation)
-	Profile.current().active = rotation.name
+	characterData().activeRotation = rotation.name
 end
 
 -- setActiveByName makes the rotation with the given name active. It is a
@@ -404,7 +439,7 @@ function Profile.setActiveByName(name)
 	local list = Profile.rotations()
 	for i = 1, #list do
 		if list[i].name == name then
-			Profile.current().active = name
+			characterData().activeRotation = name
 			return true
 		end
 	end

@@ -60,6 +60,13 @@ fake.SPELL_FAILED_LINE_OF_SIGHT = "Target not in line of sight"
 fake.SPELL_FAILED_MOVING = "Can't do that while moving"
 fake.SPELL_FAILED_OUT_OF_RANGE = "Out of range"
 fake.ERR_SPELL_OUT_OF_RANGE = "Out of range."
+fake.SPELL_FAILED_NOT_IN_CONTROL = "You are not in control of your actions"
+fake.SPELL_FAILED_CHARMED = "Can't do that while charmed"
+fake.SPELL_FAILED_CONFUSED = "Can't do that while confused"
+fake.SPELL_FAILED_STUNNED = "Can't do that while stunned"
+fake.SPELL_FAILED_SILENCED = "Can't do that while silenced"
+fake.SPELL_FAILED_PACIFIED = "Can't use that ability while pacified"
+fake.SPELL_FAILED_FLEEING = "Can't do that while fleeing"
 
 fake.Compatibility = function(script)
 	scripts[#scripts + 1] = script
@@ -361,7 +368,7 @@ loadModule(ROOT .. "Core/ConditionDefinitions.lua", ns)
 loadModule(ROOT .. "Core/Conditions.lua", ns)
 loadModule(ROOT .. "Core/Rotation.lua", ns)
 
-ns.addon = { db = { profile = {} } }   -- Accessibility.lua (the entry) is not loaded; provide the db stub
+ns.addon = { db = { profile = {}, char = {} } }   -- Accessibility.lua (the entry) is not loaded; provide the db stub
 ns.RotationButton = { ApplyPosition = function() end }   -- Config's button settings call it
 _G.__dialogStatus = {}   -- the AceConfigDialog:GetStatusTable stub returns this
 
@@ -378,6 +385,7 @@ local Config = ns.Config
 local Log = ns.Log
 
 local function prof() return ns.addon.db.profile end
+local function charProfile() return ns.addon.db.char end
 
 -- ---------------------------------------------------------------------------
 -- Compatibility tests
@@ -579,6 +587,21 @@ do
 	eq("legacy rules migrated to one rotation", #p.rotations, 1)
 	eq("migrated rotation named Default", p.rotations[1].name, "Default")
 	eq("active set to Default", p.active, "Default")
+	local sharedRotations = {
+		active = "Single",
+		rotations = {
+			{ name = "Single", rules = {} },
+			{ name = "AoE", rules = {} },
+		},
+	}
+	local firstCharacter = {}
+	local secondCharacter = { activeRotation = "AoE" }
+	Profile.sanitizeCharacter(firstCharacter, sharedRotations)
+	Profile.sanitizeCharacter(secondCharacter, sharedRotations)
+	eq("character active rotation migrates from profile", firstCharacter.activeRotation, "Single")
+	eq("character active rotation preserves selection", secondCharacter.activeRotation, "AoE")
+	ok("characters can select different rotations",
+		firstCharacter.activeRotation ~= secondCharacter.activeRotation)
 	eq("legacy rules field removed", p.rules, nil)
 	local rules = p.rotations[1].rules
 	eq("rules length", #rules, 2)
@@ -1021,7 +1044,7 @@ local function setRules(t)
 		rule.unit = nil
 	end
 	prof().rotations = { { name = "Default", rules = t } }
-	prof().active = "Default"
+	charProfile().activeRotation = "Default"
 end
 
 local function rules()
@@ -1170,6 +1193,13 @@ end
 
 testUiFailureThrottle(fake.SPELL_FAILED_MOVING, "moving UI failure")
 testUiFailureThrottle(fake.SPELL_FAILED_OUT_OF_RANGE, "range UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_NOT_IN_CONTROL, "not-in-control UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_CHARMED, "charmed UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_CONFUSED, "confused UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_STUNNED, "stunned UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_SILENCED, "silenced UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_PACIFIED, "pacified UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_FLEEING, "fleeing UI failure")
 
 resetRotation()
 local staleUiErrorTime = state.time
@@ -1565,7 +1595,7 @@ end
 do
 	-- start from a clean profile with the new schema
 	prof().rotations = { { name = "Single", conditions = { { type = "unit_in_combat", unit = "player" } }, rules = { { spell = "Fireball", enabled = true, unit = "target", conditions = {} } } } }
-	prof().active = "Single"
+	charProfile().activeRotation = "Single"
 
 	ok("activeRules resolves the active rotation", Profile.activeRules() == prof().rotations[1].rules)
 
@@ -1574,6 +1604,10 @@ do
 	ok("addRotation appends", #prof().rotations == 2)
 	eq("addRotation name kept", second.name, "AoE")
 	eq("addRotation starts empty", #second.rules, 0)
+	eq("activeName uses character selection", Profile.activeName(), "Single")
+	charProfile().activeRotation = "AoE"
+	eq("activeName changes per character", Profile.activeName(), "AoE")
+	charProfile().activeRotation = "Single"
 
 	-- duplicate copies rules and names uniquely
 	local dup = Profile.duplicateRotation(prof().rotations[1])
@@ -1584,33 +1618,33 @@ do
 
 	-- rename syncs the active pointer
 	Profile.setActive(prof().rotations[1])
-	eq("setActive sets name", prof().active, "Single")
+	eq("setActive sets name", charProfile().activeRotation, "Single")
 	ok("setActiveByName matches", Profile.setActiveByName("AoE") == true)
-	eq("setActiveByName changes active", prof().active, "AoE")
+	eq("setActiveByName changes active", charProfile().activeRotation, "AoE")
 	ok("setActiveByName ignores unknown", Profile.setActiveByName("Nope") == false)
-	eq("setActiveByName unknown keeps active", prof().active, "AoE")
+	eq("setActiveByName unknown keeps active", charProfile().activeRotation, "AoE")
 	Profile.setActiveByName("Single")
 	ok("renameRotation succeeds", Profile.renameRotation(prof().rotations[1], "ST"))
-	eq("renameRotation syncs active", prof().active, "ST")
+	eq("renameRotation syncs active", charProfile().activeRotation, "ST")
 
 	-- rename refuses an empty name
 	ok("renameRotation refuses empty", Profile.renameRotation(prof().rotations[1], "  ") == false)
 	-- rename refuses a name already taken by another rotation
 	prof().rotations = { { name = "One", rules = {} }, { name = "Two", rules = {} } }
-	prof().active = "One"
+	charProfile().activeRotation = "One"
 	ok("renameRotation refuses duplicate", Profile.renameRotation(prof().rotations[1], "Two") == false)
 	eq("renameRotation duplicate keeps name", prof().rotations[1].name, "One")
 
 	-- delete refuses the last rotation
 	prof().rotations = { { name = "Only", rules = {} } }
-	prof().active = "Only"
+	charProfile().activeRotation = "Only"
 	ok("deleteRotation refuses last", Profile.deleteRotation(prof().rotations[1]) == false)
 
 	-- delete a non-last rotation reassigns active when needed
 	prof().rotations = { { name = "A", rules = {} }, { name = "B", rules = {} } }
-	prof().active = "A"
+	charProfile().activeRotation = "A"
 	ok("deleteRotation removes", Profile.deleteRotation(prof().rotations[1]) == true)
-	eq("deleteRotation reassigns active", prof().active, "B")
+	eq("deleteRotation reassigns active", charProfile().activeRotation, "B")
 	eq("deleteRotation shrinks list", #prof().rotations, 1)
 
 	-- rule reorder within a rotation
@@ -1666,7 +1700,7 @@ do
 
 	local live = Profile.current()
 	live.rotations = { rotation, duplicate }
-	live.active = "First"
+	charProfile().activeRotation = "First"
 	live.button = {}
 	Profile.setAutoEnabled(true)
 	Profile.setGcdProbeSpell("Fireball")
@@ -1690,7 +1724,7 @@ do
 	eq("button y persists", live.button.y, -8)
 	eq("button scale clamps", live.button.scale, 2.0)
 	Profile.renameRotation(rotation, "Renamed")
-	eq("renamed active rotation remains active", live.active, "Renamed")
+	eq("renamed active rotation remains active", charProfile().activeRotation, "Renamed")
 end
 
 -- ---------------------------------------------------------------------------
@@ -1702,7 +1736,7 @@ do
 		{ name = "Single", rules = { { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } } },
 		{ name = "AoE", rules = {} },
 	}
-	prof().active = "Single"
+	charProfile().activeRotation = "Single"
 
 	local opts = Config.BuildOptions()
 	local rotGroup = opts.args.rotations
@@ -1758,7 +1792,7 @@ do
 	-- actions mutate the profile; test via Profile directly
 	local single = prof().rotations[1]
 	Profile.setActive(single)
-	eq("setActive via Profile", prof().active, "Single")
+	eq("setActive via Profile", charProfile().activeRotation, "Single")
 	Profile.duplicateRotation(single)
 	eq("duplicate via Profile", #prof().rotations, 3)
 	Profile.deleteRotation(prof().rotations[3])

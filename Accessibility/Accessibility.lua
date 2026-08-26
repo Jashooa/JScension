@@ -28,7 +28,7 @@ A.version = GetAddOnMetadata(ADDON_NAME, "Version") or "0.1.0"
 function A:OnInitialize()
 	self.db = LibStub("AceDB-3.0"):New("AccessibilityDB", Profile.defaults, true)
 	Profile.sanitizeProfile(self.db.profile)
-	ns.Log.Attach(self.db.profile)   -- debug ring persists in the saved profile
+	Profile.sanitizeCharacter(self.db.char, self.db.profile)
 	ns.Log.Write("boot", "addon initialized")
 	self:RegisterChatCommand("acc", "HandleSlash")
 	self:RegisterChatCommand("accessibility", "HandleSlash")

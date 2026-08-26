@@ -157,6 +157,13 @@ local function isCastFailureMessage(message)
 		or message == SPELL_FAILED_MOVING
 		or message == SPELL_FAILED_OUT_OF_RANGE
 		or message == ERR_SPELL_OUT_OF_RANGE
+		or message == SPELL_FAILED_NOT_IN_CONTROL
+		or message == SPELL_FAILED_CHARMED
+		or message == SPELL_FAILED_CONFUSED
+		or message == SPELL_FAILED_STUNNED
+		or message == SPELL_FAILED_SILENCED
+		or message == SPELL_FAILED_PACIFIED
+		or message == SPELL_FAILED_FLEEING
 end
 
 local function uiErrorMatchesAttempt()
