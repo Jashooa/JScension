@@ -25,11 +25,13 @@ assert(Compatibility and Conditions and SpellPicker and Profile and Targeting an
 	and Cast and Spell and Unit and Player and Constants and Log,
 	"load order: Core/Rotation before its dependencies")
 
--- The anti-spam window spaces repeated no-cooldown instant casts. The
--- sanitized profile owns its value so users can tune it without code changes.
+-- The failure throttle delays retries after a failed cast. The sanitized
+-- profile owns the configured window so users can tune it without code changes.
 
-local lastCastAt = {}       -- spell name -> time of last attempt
+local failedCastAt = {}      -- normalized spell name -> time of last failure
+local UI_ERROR_CORRELATION_WINDOW = 0.5
 local lastAttemptTime = 0   -- time of last attempt (GCD fallback)
+local lastAttemptAt = 0
 local jitterPending = {
 	rule = nil,
 	spell = nil,
@@ -102,6 +104,22 @@ local function sameSpell(first, second)
 	if not first or not second then return false end
 	return normalizedSpell(first) == normalizedSpell(second)
 end
+local function recordFailedCast(spell)
+	local spellKey = normalizedSpell(spell)
+	if spellKey then failedCastAt[spellKey] = GetTime() end
+end
+
+local function failedCastThrottleActive(spell, currentTime)
+	local spellKey = normalizedSpell(spell)
+	local failedAt = spellKey and failedCastAt[spellKey]
+	if not failedAt then return false end
+	local window = Profile.current().antiSpamWindow
+	if window <= 0 or (currentTime - failedAt) >= window then
+		failedCastAt[spellKey] = nil
+		return false
+	end
+	return true
+end
 
 local function markImmediateRetry()
 	if not lastAttemptSpell then return end
@@ -134,15 +152,44 @@ local function reconcileGcdAfterCancellation()
 	end
 	lastAttemptTime = 0
 end
+local function isCastFailureMessage(message)
+	return message == SPELL_FAILED_LINE_OF_SIGHT
+		or message == SPELL_FAILED_MOVING
+		or message == SPELL_FAILED_OUT_OF_RANGE
+		or message == ERR_SPELL_OUT_OF_RANGE
+end
+
+local function uiErrorMatchesAttempt()
+	if not lastAttemptSpell then return false end
+	if lastAttemptState ~= "submitted"
+		and lastAttemptState ~= "queued"
+		and lastAttemptState ~= "active" then return false end
+	if lastAttemptState == "active" then
+		return activeCastSpell and sameSpell(activeCastSpell, lastAttemptSpell)
+	end
+	return (GetTime() - lastAttemptAt) <= UI_ERROR_CORRELATION_WINDOW
+end
+
+function Rotation.OnUiError(message)
+	if not isCastFailureMessage(message) or not uiErrorMatchesAttempt() then return end
+	recordFailedCast(lastAttemptSpell)
+	clearPending()
+	reconcileGcdAfterCancellation()
+	lastAttemptState = "failed"
+	activeCastSpell = nil
+end
 
 function Rotation.OnCastStarted(spell)
 	activeCastSpell = normalizedSpell(spell)
 	if sameSpell(lastAttemptSpell, spell) then
 		lastAttemptState = "active"
+		lastAttemptAt = GetTime()
 	end
 end
 
 function Rotation.OnCastSucceeded(spell)
+	local spellKey = normalizedSpell(spell)
+	if spellKey then failedCastAt[spellKey] = nil end
 	if lastAttemptState == "queued"
 		and activeCastSpell
 		and sameSpell(activeCastSpell, spell)
@@ -175,6 +222,9 @@ end
 function Rotation.OnCastFailed(spell)
 	local matchesAttempt = sameSpell(lastAttemptSpell, spell)
 	local matchesActive = sameSpell(activeCastSpell, spell)
+	if matchesAttempt and lastAttemptState ~= "succeeded" then
+		recordFailedCast(lastAttemptSpell)
+	end
 	if lastAttemptState == "queued" and matchesActive and matchesAttempt then
 		activeCastSpell = nil
 		return
@@ -226,29 +276,19 @@ local function passesConditions(rule, contextUnit)
 	return true
 end
 
-local function passesAntiSpam(rule, selection, currentTime)
-	local castMs = Spell.castTime(rule.spell)
-	local castName = Cast.currentCast()
-	if castName then castName = Spell.stripRank(castName) end
-	local refName = Spell.stripRank(rule.spell)
-	local antiSpamWindow = Profile.current().antiSpamWindow
-	if retryMatches(selection, candidateGuid(selection)) then return true end
-	if (castMs and castMs > 0) or castName == refName then return true end
-	local lastAttemptAt = lastCastAt[rule.spell]
-	if lastAttemptAt and (currentTime - lastAttemptAt) < antiSpamWindow then return false end
-	return true
-end
 
 local function passesSpellGates(rule, currentTime)
+	if failedCastThrottleActive(rule.spell, currentTime) then
+		return false, "failed-cast throttle"
+	end
 	if Player.isMounted() then return false, "mounted" end
 	if not SpellPicker.IsKnown(rule.spell) then return false, "not known" end
 	if Spell.hasCharges(rule.spell) and Spell.currentCharges(rule.spell) <= 0 then
 		return false, "no charges"
 	end
 	local start, duration = Spell.cooldown(rule.spell)
-	if Cooldown.isOwnCooldown(start, duration) then
-		lastCastAt[rule.spell] = nil
-		if currentTime < (start + duration) then return false, "on cooldown" end
+	if Cooldown.isOwnCooldown(start, duration) and currentTime < (start + duration) then
+		return false, "on cooldown"
 	end
 	return true
 end
@@ -276,7 +316,6 @@ local function evaluateCandidate(rule, targetRule, candidate, currentTime)
 		local usablePasses, usableReason = passesCandidateUsability(rule, unit)
 		if not usablePasses then return false, usableReason end
 		if not passesConditions(rule, unit) then return false, "condition" end
-		if not passesAntiSpam(rule, selection, currentTime) then return false, "anti-spam" end
 		return true
 	end)
 	if not ok then return false, "candidate evaluation" end
@@ -314,9 +353,9 @@ local function evaluateRule(rule, currentTime)
 	return false, nil, lastReason
 end
 
--- emitRule attempts the cast and records the attempt for the GCD and anti-spam
--- gates. Dynamic candidates remain on their unit tokens; no visible target
--- mutation occurs here.
+-- emitRule attempts the cast and records the attempt for GCD and failure
+-- reconciliation. Dynamic candidates remain on their unit tokens; no visible
+-- target mutation occurs here.
 local function emitRule(selection, currentTime)
 	local rule = selection.rule
 	local candidate = selection.candidate
@@ -325,8 +364,8 @@ local function emitRule(selection, currentTime)
 		return false, nil, "unit unavailable"
 	end
 	local currentCast = Cast.currentCast()
-	lastCastAt[rule.spell] = currentTime
 	lastAttemptTime = currentTime
+	lastAttemptAt = currentTime
 	lastAttemptSpell = rule.spell
 	lastAttemptState = currentCast and "queued" or "submitted"
 	lastAttemptUnit = unit

@@ -56,7 +56,8 @@ Profile.defaults = {
 		pulseInterval = 0.1,
 		gcdProbeSpell = "",
 		queueWindow = 0.4,   -- seconds; 0 disables early-queueing
-		antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW,
+		-- Legacy saved-variable key; now controls failed-cast throttling.
+		antiSpamWindow = ns.Constants.DEFAULT_FAILURE_THROTTLE_WINDOW,
 		jitterWindow = ns.Constants.DEFAULT_JITTER_WINDOW,
 		active = DEFAULT_ROTATION_NAME,
 		rotations = {
@@ -193,8 +194,8 @@ function Profile.sanitizeProfile(p)
 	p.gcdProbeSpell = asString(p.gcdProbeSpell, "")
 	-- queue window: 0 (off) .. 1.0s, matching the client CVar's practical range
 	p.queueWindow = math.max(0, math.min(1.0, asNumber(p.queueWindow, 0.4)))
-	-- anti-spam window: 0 (off) .. 2.0s for no-cooldown instant spells
-	p.antiSpamWindow = clamp(asNumber(p.antiSpamWindow, Constants.DEFAULT_ANTI_SPAM_WINDOW), 0, 2.0)
+	-- Legacy antiSpamWindow key: delay retries after failed spell casts.
+	p.antiSpamWindow = clamp(asNumber(p.antiSpamWindow, Constants.DEFAULT_FAILURE_THROTTLE_WINDOW), 0, 2.0)
 	-- jitter window: 0 (off) .. 1.0s random delay before automatic casts
 	p.jitterWindow = clamp(asNumber(p.jitterWindow, Constants.DEFAULT_JITTER_WINDOW), 0, Constants.MAX_JITTER_WINDOW)
 	-- migrate the old flat rules array into one "Default" rotation
@@ -608,8 +609,8 @@ function Profile.setPulseInterval(seconds)
 	Profile.current().pulseInterval = math.max(0.05, asNumber(seconds, 0.1))
 end
 
-function Profile.setAntiSpamWindow(seconds)
-	Profile.current().antiSpamWindow = clamp(asNumber(seconds, Constants.DEFAULT_ANTI_SPAM_WINDOW), 0, 2.0)
+function Profile.setFailureThrottle(seconds)
+	Profile.current().antiSpamWindow = clamp(asNumber(seconds, Constants.DEFAULT_FAILURE_THROTTLE_WINDOW), 0, 2.0)
 end
 function Profile.setQueueWindow(seconds)
 	Profile.current().queueWindow = clamp(asNumber(seconds, Constants.DEFAULT_QUEUE_WINDOW), 0, 1.0)

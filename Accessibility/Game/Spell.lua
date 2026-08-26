@@ -32,10 +32,6 @@ function Spell.stripRank(s)
 	return s
 end
 
--- castTime returns a spell's cast time in ms, or 0 when instant.
-function Spell.castTime(ref)
-	return select(7, GetSpellInfo(ref)) or 0
-end
 
 -- name returns a spell's name.
 function Spell.name(ref)

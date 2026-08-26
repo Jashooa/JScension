@@ -13,8 +13,8 @@ ns.Constants = {
 	-- current cast's end is queued by the client, so the next cast starts
 	-- with no dead time.
 	DEFAULT_QUEUE_WINDOW = 0.4,
-	-- Default interval that spaces repeated no-cooldown instant casts.
-	DEFAULT_ANTI_SPAM_WINDOW = 1.0,
+	-- Default delay after a failed spell cast, in seconds.
+	DEFAULT_FAILURE_THROTTLE_WINDOW = 1.0,
 	-- Maximum configured random delay before an automatic cast.
 	DEFAULT_JITTER_WINDOW = 0.0,
 	MAX_JITTER_WINDOW = 1.0,

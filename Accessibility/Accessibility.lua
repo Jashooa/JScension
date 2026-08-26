@@ -44,6 +44,8 @@ function A:OnEnable()
 	self:RegisterEvent("UNIT_SPELLCAST_START", "OnSpellcastEvent")
 	self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED", "OnSpellcastEvent")
 	self:RegisterEvent("UNIT_SPELLCAST_FAILED", "OnSpellcastEvent")
+	self:RegisterEvent("UNIT_SPELLCAST_FAILED_QUIET", "OnSpellcastEvent")
+	self:RegisterEvent("UI_ERROR_MESSAGE", "OnUiErrorMessage")
 	self:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED", "OnSpellcastEvent")
 	self:RegisterEvent("UNIT_SPELLCAST_STOP", "OnSpellcastEvent")
 	ns.RotationButton.Create(self.db.profile.button)
@@ -88,11 +90,14 @@ function A:OnSpellcastEvent(event, unit, spell)
 		Rotation.OnCastStarted(spell)
 	elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
 		Rotation.OnCastSucceeded(spell)
-	elseif event == "UNIT_SPELLCAST_FAILED" then
+	elseif event == "UNIT_SPELLCAST_FAILED" or event == "UNIT_SPELLCAST_FAILED_QUIET" then
 		Rotation.OnCastFailed(spell)
 	else
 		Rotation.OnCastCancelled(spell)
 	end
+end
+function A:OnUiErrorMessage(_, message)
+	Rotation.OnUiError(message)
 end
 
 -- ---------------------------------------------------------------------------

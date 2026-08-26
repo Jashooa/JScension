@@ -56,6 +56,10 @@ end
 local scripts = {}   -- every script the fake Compatibility received
 
 local fake = {}
+fake.SPELL_FAILED_LINE_OF_SIGHT = "Target not in line of sight"
+fake.SPELL_FAILED_MOVING = "Can't do that while moving"
+fake.SPELL_FAILED_OUT_OF_RANGE = "Out of range"
+fake.ERR_SPELL_OUT_OF_RANGE = "Out of range."
 
 fake.Compatibility = function(script)
 	scripts[#scripts + 1] = script
@@ -233,16 +237,13 @@ end
 fake.IsSpellInRange = function(s) local x = state.spells[s]; if x then return x.inRange end end
 fake.GetSpellTexture = function() return "Interface\\Icons\\TEMP" end
 -- GetSpellInfo returns (name, rank, icon, powerCost, isFunnel, powerType,
--- castingTime, minRange, maxRange) in this client. The spell table may set
--- castMs to simulate a cast-time spell (used by the engine's anti-spam
--- gate, which reads the 7th return).
+-- castingTime, minRange, maxRange) in this client.
 fake.GetSpellInfo = function(id)
 	local x = type(id) == "string" and state.spells[id] or nil
-	local castMs = x and x.castMs or 0
 	local minRange = x and x.minRange or 0
 	local maxRange = x and x.maxRange or 0
-	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs, minRange, maxRange end
-	return "spell", "", "Interface\\Icons\\TEMP", 0, false, 0, castMs, minRange, maxRange
+	if id == 8921 then return "Moonfire", "", "Interface\\Icons\\TEMP", 0, false, 0, 0, minRange, maxRange end
+	return "spell", "", "Interface\\Icons\\TEMP", 0, false, 0, 0, minRange, maxRange
 end
 -- GetSpellLink returns a hyperlink for a name or ID. The spell table may
 -- set testLink to simulate a resolved link; unknown spells return nil.
@@ -573,7 +574,7 @@ do
 	eq("pulseInterval clamped", p.pulseInterval, 0.05)
 	eq("gcdProbeSpell coerced", p.gcdProbeSpell, "")
 	eq("queueWindow defaulted", p.queueWindow, 0.4)
-	eq("antiSpamWindow defaulted", p.antiSpamWindow, 1.0)
+	eq("failure throttle defaulted", p.antiSpamWindow, 1.0)
 	eq("jitterWindow defaulted", p.jitterWindow, 0.0)
 	eq("legacy rules migrated to one rotation", #p.rotations, 1)
 	eq("migrated rotation named Default", p.rotations[1].name, "Default")
@@ -629,12 +630,12 @@ do
 	eq("button scale clamped", p.button.scale, 2.0)
 	eq("button locked coerced", p.button.locked, false)
 	eq("button enabled defaulted", p.button.enabled, true)
-	local lowAnti = { antiSpamWindow = -1 }
-	Profile.sanitizeProfile(lowAnti)
-	eq("antiSpamWindow clamps low", lowAnti.antiSpamWindow, 0.0)
-	local highAnti = { antiSpamWindow = 3 }
-	Profile.sanitizeProfile(highAnti)
-	eq("antiSpamWindow clamps high", highAnti.antiSpamWindow, 2.0)
+	local lowFailureThrottle = { antiSpamWindow = -1 }
+	Profile.sanitizeProfile(lowFailureThrottle)
+	eq("failure throttle clamps low", lowFailureThrottle.antiSpamWindow, 0.0)
+	local highFailureThrottle = { antiSpamWindow = 3 }
+	Profile.sanitizeProfile(highFailureThrottle)
+	eq("failure throttle clamps high", highFailureThrottle.antiSpamWindow, 2.0)
 	local lowJitter = { jitterWindow = -1 }
 	Profile.sanitizeProfile(lowJitter)
 	eq("jitterWindow clamps low", lowJitter.jitterWindow, 0.0)
@@ -998,7 +999,7 @@ end
 -- ---------------------------------------------------------------------------
 
 -- A monotonically increasing clock. Each scenario starts far past the last
--- cast, so the module-local GCD and anti-spam timers do not leak across
+-- cast, so module-local GCD and failed-cast throttle timers do not leak across
 -- scenarios.
 local scenarioTime = 0
 
@@ -1035,9 +1036,9 @@ local function resetRotation()
 	state.contextEnds = 0
 	state.targetChanges = 0
 	Rotation.ClearJitter()
-	prof().antiSpamWindow = ns.Constants.DEFAULT_ANTI_SPAM_WINDOW
 	setKnown({ "Fireball", "Renew", "probe" })
 	setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
+	prof().antiSpamWindow = ns.Constants.DEFAULT_FAILURE_THROTTLE_WINDOW
 	setUnit("player", { exists = true, dead = false, guid = "0x1111" })
 	setUnit("target", { exists = true, dead = false, guid = "0x2222", hostile = true, health = 100, maxHealth = 100 })
 	setRules({ { name = "", spell = "Fireball", enabled = true, unit = "target", conditions = {} } })
@@ -1131,14 +1132,50 @@ ok("out of range blocks the cast", Rotation.CastBest() == false)
 state.inCombat = false
 ok("failing condition blocks the cast", Rotation.CastBest() == false)
 
--- anti-spam: cast, then advance past the GCD but inside the 1.0s window
+-- Successful casts are not delayed by the failed-cast throttle.
 resetRotation()
-local t0 = state.time
+local successfulCastTime = state.time
 ok("first cast succeeds", Rotation.CastBest() == true)
-state.time = t0 + 0.5
-ok("anti-spam blocks a fast re-cast", Rotation.CastBest() == false)
-state.time = t0 + 1.1
-ok("cast succeeds after the anti-spam window", Rotation.CastBest() == true)
+state.time = successfulCastTime + 1.6
+ok("successful instant spell is not throttled", Rotation.CastBest() == true)
+
+-- A failed cast throttles retries for the configured window.
+resetRotation()
+local failedCastTime = state.time
+ok("cast before failure succeeds", Rotation.CastBest() == true)
+Rotation.OnCastFailed("Fireball")
+state.time = failedCastTime + 0.5
+ok("failed-cast throttle blocks retry", Rotation.CastBest() == false)
+state.time = failedCastTime + 1.1
+ok("failed-cast throttle expires", Rotation.CastBest() == true)
+local function testUiFailureThrottle(message, label)
+	resetRotation()
+	local attemptTime = state.time
+	ok(label .. " attempt succeeds", Rotation.CastBest() == true)
+	Rotation.OnUiError(message)
+	state.time = attemptTime + 0.5
+	ok(label .. " blocks retry", Rotation.CastBest() == false)
+	state.time = attemptTime + 1.1
+	ok(label .. " throttle expires", Rotation.CastBest() == true)
+end
+
+testUiFailureThrottle(fake.SPELL_FAILED_MOVING, "moving UI failure")
+testUiFailureThrottle(fake.SPELL_FAILED_OUT_OF_RANGE, "range UI failure")
+
+resetRotation()
+local staleUiErrorTime = state.time
+ok("stale UI error test cast succeeds", Rotation.CastBest() == true)
+state.time = staleUiErrorTime + 0.6
+Rotation.OnUiError(fake.SPELL_FAILED_LINE_OF_SIGHT)
+state.time = staleUiErrorTime + 1.6
+ok("stale UI error does not throttle", Rotation.CastBest() == true)
+
+resetRotation()
+local unrelatedUiErrorTime = state.time
+ok("unrelated UI error test cast succeeds", Rotation.CastBest() == true)
+Rotation.OnUiError("Inventory is full.")
+state.time = unrelatedUiErrorTime + 1.6
+ok("unrelated UI error does not throttle", Rotation.CastBest() == true)
 -- jitter delays automatic casts once, then preserves the selected candidate.
 local originalRandom = math.random
 math.random = function() return 0.5 end
@@ -1313,38 +1350,17 @@ setUnit("player", { exists = true, dead = false, guid = "0x1111", channelEndMs =
 clearScripts()
 ok("mid-channel inside queue window casts", Rotation.CastBest() == true)
 
--- anti-spam must NOT block re-queueing a cast-time spell inside the window
--- (the cast itself is the spacer, and the 1.0s window would break the queue)
-resetRotation()
-setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1, castMs = 2000 })
-local tq = state.time
-ok("cast-time spell first cast succeeds", Rotation.CastBest() == true)
--- 1.6s into a 2s cast: inside the 0.4s queue window, past the GCD fallback
-state.time = tq + 1.6
-setUnit("player", { exists = true, dead = false, guid = "0x1111", castingEndMs = (tq + 2.0) * 1000 })
-clearScripts()
-ok("cast-time spell re-queues inside window (anti-spam bypassed)", Rotation.CastBest() == true)
-ok("re-queue emitted the same spell", hasCastScript("Fireball"))
-
--- an instant spell is still anti-spammed: 0.5s after casting it, blocked
-resetRotation()
-setSpell("Fireball", { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })  -- instant
-local ti = state.time
-ok("instant spell first cast succeeds", Rotation.CastBest() == true)
-state.time = ti + 0.5
-ok("instant spell still anti-spammed", Rotation.CastBest() == false)
-state.time = ti + 1.1
-ok("instant spell casts again after the window", Rotation.CastBest() == true)
-
--- a zero anti-spam window permits an immediate second instant cast when the
--- explicit GCD probe is clear.
+-- A zero failed-cast throttle permits an immediate retry when the explicit
+-- GCD probe is clear.
 resetRotation()
 prof().gcdProbeSpell = "probe"
 prof().antiSpamWindow = 0.0
 local immediateTime = state.time
-ok("zero anti-spam first cast succeeds", Rotation.CastBest() == true)
+ok("zero failure throttle first cast succeeds", Rotation.CastBest() == true)
+Rotation.OnCastFailed("Fireball")
 state.time = immediateTime
-ok("zero anti-spam permits immediate recast", Rotation.CastBest() == true)
+ok("zero failure throttle permits immediate retry", Rotation.CastBest() == true)
+
 
 -- aura condition accepts a numeric spell ID in the aura field
 state.auras.target = {}
@@ -1647,12 +1663,12 @@ do
 	Profile.setGcdProbeSpell("Fireball")
 	Profile.setPulseInterval(0)
 	Profile.setQueueWindow(9)
-	Profile.setAntiSpamWindow(9)
+	Profile.setFailureThrottle(9)
 	eq("auto setter persists", live.auto, true)
 	eq("GCD setter persists", live.gcdProbeSpell, "Fireball")
 	eq("pulse setter clamps", live.pulseInterval, 0.05)
 	eq("queue setter clamps", live.queueWindow, 1.0)
-	eq("anti-spam setter clamps", live.antiSpamWindow, 2.0)
+	eq("failure throttle setter clamps", live.antiSpamWindow, 2.0)
 	Profile.setButtonEnabled(live.button, false)
 	Profile.setButtonLocked(live.button, true)
 	Profile.setButtonPosition(live.button, "TOPLEFT", "BOTTOMRIGHT", 12, -8)
