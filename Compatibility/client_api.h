@@ -9,6 +9,7 @@
 #define CLIENT_OBJECT_FIELD_TYPE_INDEX 0x2u
 #define CLIENT_UNIT_FIELD_HEALTH_INDEX 0x18u
 #define CLIENT_UNIT_FIELD_MAXHEALTH_INDEX 0x20u
+#define CLIENT_UNIT_FIELD_COMBAT_REACH_INDEX 0x42u
 
 struct ClientTargetCandidate;
 
@@ -42,8 +43,7 @@ int client_count_visible_units_in_range(ClientObjectGuid centerGuid,
                                          float radius, uint32_t *count);
 int client_read_object_position(void *object, ClientWorldPosition *position);
 int client_read_object_scale(void *object, float *scale);
-int client_trace_line_of_sight(ClientWorldPosition start, ClientWorldPosition end,
-                               float startScale, float endScale);
+int client_trace_line_of_sight(ClientObjectGuid sourceGuid, ClientObjectGuid targetGuid);
 int client_handle_terrain_click(const ClientTerrainClick *terrainClick);
 int client_select_visible_units(unsigned int category,
                                 unsigned int criterion,

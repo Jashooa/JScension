@@ -500,12 +500,8 @@ do
 
 	clearScripts()
 	local los = Compatibility.LoS("target")
-	ok("LoS result", los == 1)
-	eq("LoS player position command", scripts[1], "Compatibility_Position 0x1111")
-	eq("LoS target position command", scripts[2], "Compatibility_Position 0x2222")
-	eq("LoS player scale command", scripts[3], "Compatibility_Scale 0x1111")
-	eq("LoS target scale command", scripts[4], "Compatibility_Scale 0x2222")
-	eq("LoS command", scripts[5], "Compatibility_LOS 1.250000 2.500000 3.750000 4.500000 5.750000 6.250000 1.000000 1.500000")
+	ok("Spell LoS result", los == 1)
+	eq("Spell LoS command", scripts[1], "Compatibility_LOS 0x1111 0x2222")
 end
 
 -- ---------------------------------------------------------------------------
@@ -1092,8 +1088,8 @@ state.mounted = false
 resetRotation()
 state.lineOfSight = false
 clearScripts()
-ok("blocked line of sight blocks the cast", Rotation.CastBest() == false)
-ok("line of sight gate emits no cast", not hasCastScript("Fireball"))
+ok("blocked spell line of sight blocks the cast", Rotation.CastBest() == false)
+ok("spell line of sight gate emits no cast", not hasCastScript("Fireball"))
 state.lineOfSight = true
 resetRotation()
 local globalRotation = Profile.activeRotation()

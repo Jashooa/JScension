@@ -119,20 +119,12 @@ int command_dispatch(unsigned int state, const char *script, size_t length,
     }
 
     if (command_input_matches_prefix(script, length, "Compatibility_LOS ", &input)) {
-        ClientWorldPosition start;
-        ClientWorldPosition destination;
-        float startScale;
-        float destinationScale;
-        if (!command_input_parse_float(&input, &start.x) ||
-            !command_input_parse_float(&input, &start.y) ||
-            !command_input_parse_float(&input, &start.z) ||
-            !command_input_parse_float(&input, &destination.x) ||
-            !command_input_parse_float(&input, &destination.y) ||
-            !command_input_parse_float(&input, &destination.z) ||
-            !command_input_parse_float(&input, &startScale) ||
-            !command_input_parse_float(&input, &destinationScale) ||
+        ClientObjectGuid sourceGuid;
+        ClientObjectGuid targetGuid;
+        if (!command_input_parse_guid(&input, &sourceGuid) ||
+            !command_input_parse_guid(&input, &targetGuid) ||
             !command_input_finished(&input)) return 0;
-        pushNumber(state, client_trace_line_of_sight(start, destination, startScale, destinationScale) ? 1.0 : 0.0);
+        pushNumber(state, client_trace_line_of_sight(sourceGuid, targetGuid) ? 1.0 : 0.0);
         return 1;
     }
 

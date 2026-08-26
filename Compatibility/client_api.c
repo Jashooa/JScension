@@ -3,6 +3,7 @@
 #include "client_api.h"
 #include "client_layout.h"
 #include "target_selector.h"
+#include "los_geometry.h"
 #define OBJECT_GUID_OFFSET 0x30u
 #define OBJECT_POSITION_LINK_OFFSET 0xd8u
 #define OBJECT_POSITION_OFFSET 0x10u
@@ -12,9 +13,10 @@
 #define OBJECT_FIELD_SCALE_OFFSET (OBJECT_FIELD_SCALE_INDEX * sizeof(uint32_t))
 #define UNIT_FIELD_HEALTH_OFFSET (CLIENT_UNIT_FIELD_HEALTH_INDEX * sizeof(uint32_t))
 #define UNIT_FIELD_MAXHEALTH_OFFSET (CLIENT_UNIT_FIELD_MAXHEALTH_INDEX * sizeof(uint32_t))
+#define UNIT_FIELD_COMBAT_REACH_OFFSET (CLIENT_UNIT_FIELD_COMBAT_REACH_INDEX * sizeof(uint32_t))
 #define MINIMUM_OBJECT_ADDRESS 0x10000u
-#define LINE_OF_SIGHT_FLAGS 0x1020124u
-#define EYE_HEIGHT_PER_SCALE 2.1f
+#define LINE_OF_SIGHT_FLAGS 0x10u /* WMO-only spell line of sight */
+#define EYE_HEIGHT_PER_SCALE 2.132f
 
 typedef void *(__cdecl *ObjectManagerLookupFunction)(uint32_t low, uint32_t high, uint32_t typeMask);
 typedef void *(__cdecl *ActivePlayerObjectFunction)(void);
@@ -87,14 +89,26 @@ int client_read_object_position(void *object, ClientWorldPosition *position) {
     return 1;
 }
 
-int client_read_object_scale(void *object, float *scale) {
+static int client_read_object_float_field(void *object, uint32_t fieldOffset, float *value) {
     union {
         uint32_t integer;
         float real;
-    } value;
-    if (!client_read_object_field(object, OBJECT_FIELD_SCALE_OFFSET, &value.integer)) return 0;
-    *scale = value.real;
+    } raw;
+    if (!value || !client_read_object_field(object, fieldOffset, &raw.integer)) return 0;
+    *value = raw.real;
     return 1;
+}
+
+int client_read_object_scale(void *object, float *scale) {
+    return client_read_object_float_field(object, OBJECT_FIELD_SCALE_OFFSET, scale);
+}
+
+static int client_read_object_type(void *object, uint32_t *type) {
+    return type && client_read_object_field(object, OBJECT_FIELD_TYPE_OFFSET, type);
+}
+
+static int client_read_object_combat_reach(void *object, float *combatReach) {
+    return client_read_object_float_field(object, UNIT_FIELD_COMBAT_REACH_OFFSET, combatReach);
 }
 
 static int client_unit_is_living(void *object) {
@@ -165,14 +179,50 @@ int client_count_visible_units_in_range(ClientObjectGuid centerGuid,
     return 1;
 }
 
-int client_trace_line_of_sight(ClientWorldPosition start, ClientWorldPosition end,
-                               float startScale, float endScale) {
+static ClientWorldPosition client_trace_point(ClientWorldPosition position, float scale) {
+    position.z += EYE_HEIGHT_PER_SCALE * scale;
+    return position;
+}
+
+static int client_trace_line(ClientWorldPosition start, ClientWorldPosition end) {
     TraceLineFunction traceLine = (TraceLineFunction)TRACE_LINE;
-    float startCoordinates[3] = { start.x, start.y, start.z + EYE_HEIGHT_PER_SCALE * startScale };
-    float endCoordinates[3] = { end.x, end.y, end.z + EYE_HEIGHT_PER_SCALE * endScale };
     float traceHitCoordinates[3] = { 0.0f, 0.0f, 0.0f };
     float traceDistance = 1.0f;
-    return traceLine(startCoordinates, endCoordinates, traceHitCoordinates, &traceDistance, LINE_OF_SIGHT_FLAGS, 0) == 0;
+    return traceLine(&start.x, &end.x, traceHitCoordinates,
+                     &traceDistance, LINE_OF_SIGHT_FLAGS, 0) == 0;
+}
+
+static int client_trace_line_to_object(ClientWorldPosition start, float startScale,
+                                        void *targetObject) {
+    ClientWorldPosition targetPoint;
+    uint32_t targetType;
+    float targetScale;
+    float combatReach;
+
+    if (!client_read_object_position(targetObject, &targetPoint) ||
+        !client_read_object_scale(targetObject, &targetScale) ||
+        !client_read_object_type(targetObject, &targetType)) return 0;
+    start = client_trace_point(start, startScale);
+    targetPoint = client_trace_point(targetPoint, targetScale);
+    if ((targetType & CLIENT_PLAYER_TYPE_MASK) == 0) {
+        if (!client_read_object_combat_reach(targetObject, &combatReach) ||
+            !client_compute_los_contact_point(start, targetPoint, combatReach,
+                                              &targetPoint)) return 0;
+    }
+    return client_trace_line(start, targetPoint);
+}
+
+int client_trace_line_of_sight(ClientObjectGuid sourceGuid, ClientObjectGuid targetGuid) {
+    void *sourceObject;
+    void *targetObject;
+    ClientWorldPosition start;
+    float startScale;
+
+    if (!client_find_object(sourceGuid, CLIENT_UNIT_OR_PLAYER_TYPE_MASK, &sourceObject) ||
+        !client_find_object(targetGuid, CLIENT_UNIT_OR_PLAYER_TYPE_MASK, &targetObject) ||
+        !client_read_object_position(sourceObject, &start) ||
+        !client_read_object_scale(sourceObject, &startScale)) return 0;
+    return client_trace_line_to_object(start, startScale, targetObject);
 }
 
 int client_handle_terrain_click(const ClientTerrainClick *terrainClick) {
@@ -196,9 +246,6 @@ typedef struct {
     size_t capacity;
     size_t count;
 } TargetSelectionContext;
-static int client_read_object_type(void *object, uint32_t *type) {
-    return client_read_object_field(object, OBJECT_FIELD_TYPE_OFFSET, type);
-}
 
 static int client_read_object_max_health(void *object, uint32_t *maxHealth) {
     return client_read_object_field(object, UNIT_FIELD_MAXHEALTH_OFFSET, maxHealth);
@@ -271,7 +318,6 @@ static int select_visible_unit(uint32_t low, uint32_t high, uintptr_t contextAdd
     uint32_t health;
     uint32_t maxHealth;
     uint32_t allowedIndex = UINT32_MAX;
-    float endScale;
     double distanceSquared;
     if (client_guid_in_list(guid, context->excluded, context->excludedCount, NULL) ||
         !client_find_object(guid, CLIENT_UNIT_OR_PLAYER_TYPE_MASK, &object) ||
@@ -287,9 +333,8 @@ static int select_visible_unit(uint32_t low, uint32_t high, uintptr_t contextAdd
 
     distanceSquared = squared_distance(context->centerPosition, position);
     if (distanceSquared > context->radiusSquared ||
-        !client_read_object_scale(object, &endScale) ||
-        !client_trace_line_of_sight(context->centerPosition, position,
-                                     context->centerScale, endScale)) return 1;
+        !client_trace_line_to_object(context->centerPosition,
+                                     context->centerScale, object)) return 1;
     candidate.guid = guid;
     candidate.allowedIndex = allowedIndex;
     candidate.health = health;

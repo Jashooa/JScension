@@ -14,5 +14,6 @@ gcc -std=c11 -Wall -Wextra -Werror -O2 \
     "$SOLUTION_DIR/Compatibility/tests/command_parser_test.c" \
     "$SOLUTION_DIR/Compatibility/command_parser.c" \
     "$SOLUTION_DIR/Compatibility/target_selector.c" \
+    "$SOLUTION_DIR/Compatibility/los_geometry.c" \
     -lm -o "$TEST_BINARY"
 "$TEST_BINARY"

@@ -224,19 +224,14 @@ function Compatibility.UnitCountInRange(centerUnit, targetType, radius)
 end
 
 
--- LoS returns true if there is a clear line of sight between the player and
--- a unit, false if obstructed. Eye height is 2.1 * scale per end.
+-- LoS returns true if a spell has a clear line of sight between the player and
+-- a unit, false if obstructed. The shim uses the WMO-only spell LOS mask.
 function Compatibility.LoS(unit)
 	if unit == "player" then return 1 end
-	local px, py, pz = Compatibility.Position("player")
-	if not px then return end
-	local ux, uy, uz = Compatibility.Position(unit)
-	if not ux then return end
-	local ps = Compatibility.Scale("player")
-	local us = Compatibility.Scale(unit)
-	return runCommand(
-		"Compatibility_LOS %f %f %f %f %f %f %f %f",
-		px, py, pz, ux, uy, uz, ps, us)
+	local sourceGuid = Unit.guid("player")
+	local targetGuid = Unit.guid(unit)
+	if not sourceGuid or not targetGuid then return end
+	return runCommand("Compatibility_LOS %s %s", sourceGuid, targetGuid)
 end
 
 ns.Compatibility = Compatibility

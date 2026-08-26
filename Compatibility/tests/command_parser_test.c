@@ -5,7 +5,7 @@
 
 #include "command_parser.h"
 #include "target_selector.h"
-
+#include "los_geometry.h"
 static int failures;
 
 static void expect_true(int condition, const char *name) {
@@ -217,12 +217,51 @@ static void test_target_ranking(void) {
 }
 
 
+static void expect_point(ClientWorldPosition actual, ClientWorldPosition expected,
+                         const char *name) {
+    expect_true(fabsf(actual.x - expected.x) < 0.0001f &&
+                fabsf(actual.y - expected.y) < 0.0001f &&
+                fabsf(actual.z - expected.z) < 0.0001f, name);
+}
+
+static void test_los_contact_point(void) {
+    ClientWorldPosition contact;
+
+    expect_true(client_compute_los_contact_point((ClientWorldPosition){10.0f, 0.0f, 0.0f},
+                                                 (ClientWorldPosition){0.0f, 0.0f, 0.0f},
+                                                 3.0f, &contact),
+                "LOS contact point accepts a valid reach");
+    expect_point(contact, (ClientWorldPosition){3.0f, 0.0f, 0.0f},
+                  "LOS contact point stops at combat reach");
+
+    expect_true(client_compute_los_contact_point((ClientWorldPosition){10.0f, 0.0f, 0.0f},
+                                                 (ClientWorldPosition){0.0f, 0.0f, 0.0f},
+                                                 20.0f, &contact),
+                "LOS contact point accepts reach beyond distance");
+    expect_point(contact, (ClientWorldPosition){10.0f, 0.0f, 0.0f},
+                  "LOS contact point clamps reach to distance");
+
+    expect_true(client_compute_los_contact_point((ClientWorldPosition){1.0f, 2.0f, 3.0f},
+                                                 (ClientWorldPosition){1.0f, 2.0f, 3.0f},
+                                                 4.0f, &contact),
+                "LOS contact point accepts coincident points");
+    expect_point(contact, (ClientWorldPosition){1.0f, 2.0f, 3.0f},
+                  "LOS contact point preserves coincident target");
+
+    expect_true(!client_compute_los_contact_point((ClientWorldPosition){1.0f, 0.0f, 0.0f},
+                                                  (ClientWorldPosition){0.0f, 0.0f, 0.0f},
+                                                  -1.0f, &contact),
+                "LOS contact point rejects negative reach");
+}
+
+
 int main(void) {
     test_guid_parsing();
     test_uint32_parsing();
     test_float_parsing();
     test_prefix_matching();
     test_target_ranking();
+    test_los_contact_point();
     if (failures != 0) {
         fprintf(stderr, "%d native contract test(s) failed\n", failures);
         return 1;

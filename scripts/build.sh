@@ -21,6 +21,7 @@ SHIM_SOURCES=(
     "$SOLUTION_DIR/Compatibility/shim.c"
     "$SOLUTION_DIR/Compatibility/client_layout.c"
     "$SOLUTION_DIR/Compatibility/client_api.c"
+    "$SOLUTION_DIR/Compatibility/los_geometry.c"
     "$SOLUTION_DIR/Compatibility/lua_bridge.c"
     "$SOLUTION_DIR/Compatibility/secure_executor.c"
     "$SOLUTION_DIR/Compatibility/trust_manifest.c"
