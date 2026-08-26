@@ -676,6 +676,12 @@ do
 	end
 	ok("condition registry order is stable and unique", orderedTypes)
 	ok("Eval non-table fails closed", Conditions.Eval("x") == false)
+	ok("disabled valid condition is skipped", Conditions.Eval({
+		type = "unit_exists", unit = "missing", enabled = false,
+	}) == true)
+	ok("disabled invalid condition is skipped", Conditions.Eval({
+		type = "nope", enabled = false,
+	}) == true)
 
 	-- unit_name and explicit relationship conditions
 	setUnit("target", { exists = true, dead = false, hostile = true, enemy = true, friendly = false, name = "Enemy" })
@@ -1052,6 +1058,9 @@ local function castOnce(name)
 	setSpell(name, { usable = true, noMana = false, cdStart = 0, cdDuration = 0, inRange = 1 })
 	return Rotation.CastBest()
 end
+resetRotation()
+rules()[1].conditions = { { type = "unit_exists", unit = "missing", enabled = false } }
+ok("disabled rule condition does not block cast", Rotation.CastBest() == true)
 
 resetRotation()
 ok("CastBest casts the passing rule", castOnce("Fireball") == true)

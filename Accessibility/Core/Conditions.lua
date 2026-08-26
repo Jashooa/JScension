@@ -155,7 +155,7 @@ end
 function Conditions.Eval(condition, contextUnit)
 	if type(condition) ~= "table" then return false end
 	-- disabled conditions are skipped
-	if condition.enabled == false then return false end
+	if condition.enabled == false then return true end
 	local def = Registry[resolveConditionType(condition)]
 	if type(def) ~= "table" or type(def.eval) ~= "function" then return false end
 	if not Conditions.IsComplete(condition) then return false end
